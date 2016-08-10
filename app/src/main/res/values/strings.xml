@@ -1,4 +1,7 @@
 <resources>
     <string name="app_name">ArdDrive</string>
-    <string name="action_settings">Settings</string>
+    <string name="action_select_device">Select device</string>
+    <string name="action_select_device_condensed">Device</string>
+    <string name="bluetoothRationale">To connect to the arduino bluetooth, this device needs bluetooth access</string>
+    <string name="bluetoothRefused">Bluetooth access not granted</string>
 </resources>

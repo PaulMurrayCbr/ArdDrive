@@ -3,8 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools"
     tools:context="pmurray_at_bigpond_dot_com.arddrive.MainActivity">
     <item
-        android:id="@+id/action_settings"
+        android:id="@+id/action_select_device"
         android:orderInCategory="100"
-        android:title="@string/action_settings"
-        app:showAsAction="never" />
+        android:title="@string/action_select_device"
+        android:titleCondensed="@string/action_select_device_condensed"
+        android:icon="@android:drawable/stat_sys_data_bluetooth"
+        app:showAsAction="ifRoom" />
 </menu>
