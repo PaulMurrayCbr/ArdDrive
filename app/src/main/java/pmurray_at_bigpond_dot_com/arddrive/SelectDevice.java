@@ -107,12 +107,7 @@ public class SelectDevice extends AppCompatActivity {
                         needToCancelDiscovery = false;
                     }
 
-//                    Intent rr = new Intent();
-//                    rr.putExtra(INTENT_EXTRA_BLUETOOTH_MAC, d.getAddress());
-
-                    Snackbar.make(findViewById(android.R.id.content), "TODO: connect to " + d.getAddress(), Snackbar.LENGTH_LONG)
-                            .show();
-
+                    BluetoothService.startActionConnect(getApplicationContext(), d.getAddress());
                     finish();
                 }
             }

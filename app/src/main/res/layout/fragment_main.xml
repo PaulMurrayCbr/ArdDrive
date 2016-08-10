@@ -9,9 +9,20 @@
     tools:context="pmurray_at_bigpond_dot_com.arddrive.MainActivityFragment"
     tools:showIn="@layout/activity_main">
 
-    <TextView
+    <Button
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Hello World!" />
+        android:text="Send Foo"
+        android:id="@+id/send_foo"
+        android:layout_alignParentTop="true"
+        android:layout_alignParentStart="true" />
+
+    <SeekBar
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/seekBar"
+        android:layout_below="@+id/send_foo"
+        android:layout_alignParentStart="true" />
+
 
 </RelativeLayout>
