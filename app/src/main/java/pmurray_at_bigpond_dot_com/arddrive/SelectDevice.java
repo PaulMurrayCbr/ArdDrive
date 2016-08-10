@@ -3,8 +3,10 @@ package pmurray_at_bigpond_dot_com.arddrive;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.support.annotation.NonNull;
 import android.support.design.widget.Snackbar;
@@ -23,9 +25,11 @@ import java.util.List;
 
 public class SelectDevice extends AppCompatActivity {
     static final int POPULATE_BONDED_DEVICES = 0xBEEF + 1;
+    static final int SCAN_BLUETOOTH = 0xBEEF + 2;
 
     BluetoothAdapter btAdapter;
     final ArrayList<BluetoothDevice> devices = new ArrayList<BluetoothDevice>();
+    boolean needToCancelDiscovery = false;
 
     static class BtDeviceAdapter extends ArrayAdapter<BluetoothDevice> {
         public BtDeviceAdapter(Context context, List<BluetoothDevice> devices) {
@@ -52,6 +56,16 @@ public class SelectDevice extends AppCompatActivity {
 
     BtDeviceAdapter devicesListAdapter;
 
+    private final BroadcastReceiver blueToothDiscoveryReceiver = new BroadcastReceiver() {
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            // When discovery finds a device
+            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                populateBondedDevices();
+            }
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -62,7 +76,39 @@ public class SelectDevice extends AppCompatActivity {
         devicesListAdapter = new BtDeviceAdapter(this, devices);
         ((ListView) findViewById(R.id.devicesList)).setAdapter(devicesListAdapter);
 
+        findViewById(R.id.scanButton).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                scanBluetooth();
+            }
+        });
+
+        findViewById(R.id.cancelButton).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if(needToCancelDiscovery) {
+                    btAdapter.cancelDiscovery();
+                    needToCancelDiscovery = false;
+                }
+                finish();
+            }
+        });
+    }
+
+    protected void onStart() {
+        super.onStart();
+        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+        registerReceiver(blueToothDiscoveryReceiver, filter);
         populateBondedDevices();
+    }
+
+    protected void onStop() {
+        if(needToCancelDiscovery) {
+            btAdapter.cancelDiscovery();
+            needToCancelDiscovery = false;
+        }
+        unregisterReceiver(blueToothDiscoveryReceiver);
+        super.onStop();
     }
 
     protected void populateBondedDevices() {
@@ -71,6 +117,16 @@ public class SelectDevice extends AppCompatActivity {
             devicesListAdapter.addAll(btAdapter.getBondedDevices());
             Snackbar.make(findViewById(android.R.id.content), "found " + devices.size() + " paired devices", Snackbar.LENGTH_LONG)
                     .show();
+        }
+    }
+
+    protected void scanBluetooth() {
+        if (obtainBlueToothPermission(SCAN_BLUETOOTH) && obtainBlueToothAdminPermission(SCAN_BLUETOOTH) && enableBlueTooth(SCAN_BLUETOOTH)) {
+            Snackbar.make(findViewById(android.R.id.content), "DISCOVER!", Snackbar.LENGTH_LONG)
+                    .show();
+            devicesListAdapter.clear();
+            btAdapter.startDiscovery();
+            needToCancelDiscovery = true;
         }
     }
 
@@ -83,13 +139,34 @@ public class SelectDevice extends AppCompatActivity {
                         .setAction("OK", new View.OnClickListener() {
                             @Override
                             public void onClick(View view) {
-                                onActivityResult(callbackCode, RESULT_OK, null);
+                                retry(callbackCode);
                             }
                         })
                         .setAction("Cancel", null)
                         .show();
             } else {
-               ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH}, callbackCode);
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH}, callbackCode);
+            }
+            return false;
+        }
+    }
+
+    protected boolean obtainBlueToothAdminPermission(final int callbackCode) {
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADMIN) == PackageManager.PERMISSION_GRANTED) {
+            return true;
+        } else {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.BLUETOOTH_ADMIN)) {
+                Snackbar.make(findViewById(android.R.id.content), R.string.bluetoothAdminRationale, Snackbar.LENGTH_INDEFINITE)
+                        .setAction("OK", new View.OnClickListener() {
+                            @Override
+                            public void onClick(View view) {
+                                retry(callbackCode);
+                            }
+                        })
+                        .setAction("Cancel", null)
+                        .show();
+            } else {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.BLUETOOTH_ADMIN}, callbackCode);
             }
             return false;
         }
@@ -132,6 +209,9 @@ public class SelectDevice extends AppCompatActivity {
         switch (requestCode) {
             case POPULATE_BONDED_DEVICES:
                 populateBondedDevices();
+                break;
+            case SCAN_BLUETOOTH:
+                scanBluetooth();
                 break;
         }
     }

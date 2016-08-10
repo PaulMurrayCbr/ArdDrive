@@ -39,6 +39,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Scan"
+            android:drawableRight="@android:drawable/stat_sys_data_bluetooth"
             android:id="@+id/scanButton"
             android:layout_gravity="bottom|right" />
         <Button
