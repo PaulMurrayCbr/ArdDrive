@@ -62,7 +62,6 @@ public class MainActivity extends AppCompatActivity {
 
     protected void requestBluetoothPermission() {
         if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.BLUETOOTH)) {
-            Snackbar.make(findViewById(android.R.id.content), "show rationale", Snackbar.LENGTH_LONG).show();
             Snackbar.make(findViewById(android.R.id.content), R.string.bluetoothRationale, Snackbar.LENGTH_INDEFINITE)
                     .setAction("OK", new View.OnClickListener() {
                         @Override
