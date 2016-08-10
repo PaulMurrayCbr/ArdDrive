@@ -16,6 +16,7 @@ import android.os.Bundle;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 import android.widget.TextView;
@@ -93,6 +94,30 @@ public class SelectDevice extends AppCompatActivity {
                 finish();
             }
         });
+
+
+        ((ListView) findViewById(R.id.devicesList)).setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
+                AdapterView<BtDeviceAdapter> v = (AdapterView<BtDeviceAdapter>) adapterView;
+                BluetoothDevice d = v.getAdapter().getItem(i);
+                if(d != null) {
+                    if(needToCancelDiscovery) {
+                        btAdapter.cancelDiscovery();
+                        needToCancelDiscovery = false;
+                    }
+
+//                    Intent rr = new Intent();
+//                    rr.putExtra(INTENT_EXTRA_BLUETOOTH_MAC, d.getAddress());
+
+                    Snackbar.make(findViewById(android.R.id.content), "TODO: connect to " + d.getAddress(), Snackbar.LENGTH_LONG)
+                            .show();
+
+                    finish();
+                }
+            }
+
+        });
     }
 
     protected void onStart() {
@@ -122,8 +147,6 @@ public class SelectDevice extends AppCompatActivity {
 
     protected void scanBluetooth() {
         if (obtainBlueToothPermission(SCAN_BLUETOOTH) && obtainBlueToothAdminPermission(SCAN_BLUETOOTH) && enableBlueTooth(SCAN_BLUETOOTH)) {
-            Snackbar.make(findViewById(android.R.id.content), "DISCOVER!", Snackbar.LENGTH_LONG)
-                    .show();
             devicesListAdapter.clear();
             btAdapter.startDiscovery();
             needToCancelDiscovery = true;
