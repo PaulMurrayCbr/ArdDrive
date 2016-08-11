@@ -10,6 +10,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.os.IBinder;
+import android.os.Parcel;
+import android.os.ParcelUuid;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
@@ -34,8 +36,15 @@ public class BluetoothService extends Service {
     public static final String BROADCAST_BYTES_NOT_SENT = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_BYTES_NOT_SENT";
     public static final String BROADCAST_BYTES_RECEIVED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_BYTES_RECEIVED";
 
-    // a random uuid
-    public static final UUID MY_UUID = UUID.randomUUID();
+    /**
+     * From the docs:
+     *
+     * Hint: If you are connecting to a Bluetooth serial board then try using the well-known SPP
+     * UUID 00001101-0000-1000-8000-00805F9B34FB. However if you are connecting to an Android peer
+     * then please generate your own unique UUID.
+     */
+
+    public static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     public static final String EXTRA_BYTES = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES";
     public static final String EXTRA_PACKET_N = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_PACKET_N";
@@ -60,7 +69,7 @@ public class BluetoothService extends Service {
             if (n <= 0) return;
             if (n > bytes.length) n = bytes.length;
             byte[] b = new byte[n];
-            System.arraycopy(b, 0, bytes, 0, n);
+            System.arraycopy(bytes, 0, b, 0, n);
 
             synchronized (this) {
                 if (socket == null) {
@@ -73,54 +82,15 @@ public class BluetoothService extends Service {
 
 
         public void run() {
+
             InputStream in = null;
             OutputStream out = null;
             int packetNum = 0;
 
-
-            d.fetchUuidsWithSdp();
-
             try {
-                /*  sticky - needs admin permission
-                if (d.getBondState() == BluetoothDevice.BOND_NONE) {
-                    if (!d.createBond()) {
-                        throw new IOException("cannot bond with " + mac);
-                    }
-                }
-
-                while (d.getBondState() != BluetoothDevice.BOND_BONDED) {
-                    if (currentConnection != this) {
-                        return;
-                    }
-                }
-                */
-
                 btAdapter.cancelDiscovery();
-
                 socket = d.createRfcommSocketToServiceRecord(MY_UUID);
-
-                for(int i = 0; i<3; i++) {
-                    try {
-                        socket.connect();
-                    } catch (IOException e) {
-                        broadcastException(d, e);
-                        Thread.sleep(2000);
-                    }
-                }
-
-                if(!socket.isConnected()) throw new IOException("Unable to connect");
-
-
-                // this pairs the device, but it is a hack and the resulting socket doesn't work anyway
-
-//                try {
-//                    socket.connect();
-//                } catch (IOException e) {
-//                    broadcastException(d, e);
-//                    // bug in bluetooth stack?
-//                    socket = (BluetoothSocket) d.getClass().getMethod("createRfcommSocket", new Class[]{int.class}).invoke(d, 1);
-//                    socket.connect();
-//                }
+                socket.connect();
 
                 broadcastConnected(d);
 
@@ -129,7 +99,7 @@ public class BluetoothService extends Service {
 
                 int toFlush = 0;
 
-                while (currentConnection == this) {
+                while (currentConnection == this && socket.isConnected()) {
                     if (in.available() > 0) {
                         int n = in.read(buffer);
                         if (n > 0) {
@@ -151,7 +121,6 @@ public class BluetoothService extends Service {
 
                         if (xmit != null && xmit.length > 0) {
                             socket.getOutputStream().write(xmit);
-                            Thread.sleep(100); // TODO: THIS IS FOR TESTING PURPOSES
                             toFlush += xmit.length;
                             broadcastBytesSent(d, ++packetNum, xmit);
                         }

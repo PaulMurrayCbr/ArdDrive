@@ -56,44 +56,59 @@ public class MainActivity extends AppCompatActivity {
 
             StringBuilder sb = new StringBuilder();
 
-            if(msg.hasExtra(BluetoothDevice.EXTRA_DEVICE)) {
+            if (msg.hasExtra(BluetoothDevice.EXTRA_DEVICE)) {
                 BluetoothDevice device =
                         msg.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                 mac.setText(device.getName());
-            }
-            else {
+            } else {
                 mac.setText("NO DEVICE");
             }
             String s = msg.getAction();
-            if(s!=null) s = s.substring(s.lastIndexOf('.')+1);
+            if (s != null) s = s.substring(s.lastIndexOf('.') + 1);
             act.setText(s);
 
-            if(msg.hasExtra(EXTRA_PACKET_N)) {
+            if (msg.hasExtra(EXTRA_PACKET_N)) {
                 sb.append("#");
                 sb.append(msg.getIntExtra(EXTRA_PACKET_N, -1));
                 sb.append(" ");
             }
 
-            if(msg.hasExtra(EXTRA_BYTES_N)) {
-                sb.append(msg.getIntExtra(EXTRA_BYTES_N, -1));
+            int bytes = -1;
+
+            if (msg.hasExtra(EXTRA_BYTES_N)) {
+                bytes = msg.getIntExtra(EXTRA_BYTES_N, -1);
+                sb.append(bytes);
                 sb.append(" ");
             }
 
 
-            if(msg.hasExtra(EXTRA_BYTES)) {
+            if (msg.hasExtra(EXTRA_BYTES)) {
                 byte[] b = msg.getByteArrayExtra(EXTRA_BYTES);
                 sb.append(" of ");
                 sb.append(b.length);
+                if (bytes == -1 || bytes > b.length) {
+                    bytes = b.length;
+                }
                 sb.append(" <");
-                sb.append(new String(b));
+                for (int i = 0; i < bytes; i++) {
+                    byte bb = b[i];
+                    if (bb >= ' ' && bb < 127)
+                        sb.append((char) bb);
+                    else {
+                        byte bbb = (byte) ((bb >> 4) & 0xf);
+                        sb.append((char) (bbb + (bbb < 10 ? '0' : 'a' - 10)));
+                        bbb = (byte) ((bb) & 0xf);
+                        sb.append((char) (bbb + (bbb < 10 ? '0' : 'a' - 10)));
+                    }
+                }
                 sb.append(">");
             }
 
-            if(msg.hasExtra(EXTRA_EXCEPTION)) {
+            if (msg.hasExtra(EXTRA_EXCEPTION)) {
                 sb.append(msg.getStringExtra(EXTRA_EXCEPTION));
             }
 
-            if(msg.hasExtra(BluetoothDevice.EXTRA_UUID)) {
+            if (msg.hasExtra(BluetoothDevice.EXTRA_UUID)) {
                 sb.append(msg.getParcelableExtra(BluetoothDevice.EXTRA_UUID));
             }
 
@@ -107,12 +122,10 @@ public class MainActivity extends AppCompatActivity {
     BroadcastsAdapter broadcastsAdapter;
 
 
-    final BroadcastReceiver broadcastReciever = new BroadcastReceiver()
-    {
+    final BroadcastReceiver broadcastReciever = new BroadcastReceiver() {
         @Override
-        public void onReceive(Context context, Intent intent)
-        {
-            while(broadcastsAdapter.getCount() >= 10) {
+        public void onReceive(Context context, Intent intent) {
+            while (broadcastsAdapter.getCount() >= 10) {
                 broadcastsAdapter.remove(broadcastsAdapter.getItem(0));
             }
             broadcastsAdapter.add(intent);
@@ -120,12 +133,10 @@ public class MainActivity extends AppCompatActivity {
     };
 
 
-    final BroadcastReceiver btReceiver = new BroadcastReceiver()
-    {
+    final BroadcastReceiver btReceiver = new BroadcastReceiver() {
         @Override
-        public void onReceive(Context context, Intent intent)
-        {
-            while(broadcastsAdapter.getCount() >= 10) {
+        public void onReceive(Context context, Intent intent) {
+            while (broadcastsAdapter.getCount() >= 10) {
                 broadcastsAdapter.remove(broadcastsAdapter.getItem(0));
             }
             broadcastsAdapter.add(intent);
@@ -139,21 +150,23 @@ public class MainActivity extends AppCompatActivity {
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        ((Button)findViewById(R.id.send_foo)).setOnClickListener(new View.OnClickListener() {
+        ((Button) findViewById(R.id.send_foo)).setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
                 startActionSendBytes(getApplicationContext(), "foo".getBytes());
             }
         });
 
-        ((SeekBar)findViewById(R.id.seekBar)).setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar var1, int var2, boolean var3)  {
-                startActionSendBytes(getApplicationContext(), ("{"+var2+"}").getBytes());
+        ((SeekBar) findViewById(R.id.seekBar)).setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar var1, int var2, boolean var3) {
+                startActionSendBytes(getApplicationContext(), ("{" + var2 + "}").getBytes());
 
             }
 
-            public void onStartTrackingTouch(SeekBar var1) {}
+            public void onStartTrackingTouch(SeekBar var1) {
+            }
 
-            public void onStopTrackingTouch(SeekBar var1) {}
+            public void onStopTrackingTouch(SeekBar var1) {
+            }
 
         });
 
@@ -229,8 +242,8 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String permissions[], @NonNull int[] grantResults) {
-        for(int r: grantResults) {
-            if(r!=PackageManager.PERMISSION_GRANTED) {
+        for (int r : grantResults) {
+            if (r != PackageManager.PERMISSION_GRANTED) {
                 Snackbar.make(findViewById(android.R.id.content), R.string.permissionRefused, Snackbar.LENGTH_LONG).show();
                 return;
             }
@@ -242,10 +255,9 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode,
                                     int resultCode,
                                     Intent data) {
-        if(resultCode == RESULT_OK) {
+        if (resultCode == RESULT_OK) {
             retry(requestCode);
-        }
-        else {
+        } else {
             Snackbar.make(findViewById(android.R.id.content), R.string.activityUnsuccessful, Snackbar.LENGTH_LONG).show();
         }
     }
@@ -254,7 +266,7 @@ public class MainActivity extends AppCompatActivity {
         switch (requestCode) {
             case RETRY_CHOOSE_BLUETOOTH:
                 chooseBluetooth();
-            break;
+                break;
         }
     }
 
