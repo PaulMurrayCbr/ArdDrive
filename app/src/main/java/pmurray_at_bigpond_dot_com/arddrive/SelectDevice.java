@@ -107,7 +107,7 @@ public class SelectDevice extends AppCompatActivity {
                         needToCancelDiscovery = false;
                     }
 
-                    BluetoothService.startActionConnect(getApplicationContext(), d.getAddress());
+                    BluetoothService.startActionConnect(getApplicationContext(), d);
                     finish();
                 }
             }

@@ -14,6 +14,8 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -28,30 +30,30 @@ public class BluetoothService extends Service {
     public static final String BROADCAST_EXCEPTION = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_EXCEPTION";
     public static final String BROADCAST_DISCONNECTED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_DISCONNECTED";
     public static final String BROADCAST_BYTES_SENT = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_BYTES_SENT";
+    public static final String BROADCAST_BYTES_FLUSHED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_BYTES_FLUSHED";
     public static final String BROADCAST_BYTES_NOT_SENT = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_BYTES_NOT_SENT";
     public static final String BROADCAST_BYTES_RECEIVED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_BYTES_RECEIVED";
 
     // a random uuid
-    public static final UUID MY_UUID = UUID.fromString("b0cb6270-5f19-11e6-8b77-86f30ca893d3");
+    public static final UUID MY_UUID = UUID.randomUUID();
 
-    public static final String EXTRA_MAC = "pmurray_at_bigpond_dot_com.arddrive.extra.MAC";
     public static final String EXTRA_BYTES = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES";
+    public static final String EXTRA_PACKET_N = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_PACKET_N";
     public static final String EXTRA_BYTES_N = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES_N";
     public static final String EXTRA_EXCEPTION = "pmurray_at_bigpond_dot_com.arddrive.extra.EXCEPTION";
 
     BluetoothAdapter btAdapter;
 
     class Connection implements Runnable {
-        private final String mac;
-        private BluetoothDevice d;
+        private final BluetoothDevice d;
         private BluetoothSocket socket = null;
 
         // this would be better done with nio, obviously
         private final LinkedList<byte[]> pending = new LinkedList<byte[]>();
         private byte[] buffer = new byte[1024];
 
-        Connection(String mac) {
-            this.mac = mac;
+        Connection(BluetoothDevice d) {
+            this.d = d;
         }
 
         void send(byte[] bytes, int n) {
@@ -71,12 +73,14 @@ public class BluetoothService extends Service {
 
 
         public void run() {
-            try {
-                d = btAdapter.getRemoteDevice(mac);
-                if (d == null) {
-                    throw new IOException(mac + " not found");
-                }
+            InputStream in = null;
+            OutputStream out = null;
+            int packetNum = 0;
 
+
+            d.fetchUuidsWithSdp();
+
+            try {
                 /*  sticky - needs admin permission
                 if (d.getBondState() == BluetoothDevice.BOND_NONE) {
                     if (!d.createBond()) {
@@ -91,45 +95,100 @@ public class BluetoothService extends Service {
                 }
                 */
 
-                socket = d.createRfcommSocketToServiceRecord(MY_UUID);
-                socket.connect();
+                btAdapter.cancelDiscovery();
 
-                broadcastConnected(d.getAddress());
+                socket = d.createRfcommSocketToServiceRecord(MY_UUID);
+
+                for(int i = 0; i<3; i++) {
+                    try {
+                        socket.connect();
+                    } catch (IOException e) {
+                        broadcastException(d, e);
+                        Thread.sleep(2000);
+                    }
+                }
+
+                if(!socket.isConnected()) throw new IOException("Unable to connect");
+
+
+                // this pairs the device, but it is a hack and the resulting socket doesn't work anyway
+
+//                try {
+//                    socket.connect();
+//                } catch (IOException e) {
+//                    broadcastException(d, e);
+//                    // bug in bluetooth stack?
+//                    socket = (BluetoothSocket) d.getClass().getMethod("createRfcommSocket", new Class[]{int.class}).invoke(d, 1);
+//                    socket.connect();
+//                }
+
+                broadcastConnected(d);
+
+                in = socket.getInputStream();
+                out = socket.getOutputStream();
+
+                int toFlush = 0;
 
                 while (currentConnection == this) {
-                    if (socket.getInputStream().available() > 0) {
-                        int n = socket.getInputStream().read(buffer);
+                    if (in.available() > 0) {
+                        int n = in.read(buffer);
                         if (n > 0) {
-                            broadcastBytesReceived(d.getAddress(), buffer, n);
+                            broadcastBytesReceived(d, buffer, n);
                         }
                     } else {
                         byte[] xmit = null;
                         synchronized (pending) {
-                            if (!pending.isEmpty())
-                                xmit = pending.getFirst();
+                            if (!pending.isEmpty()) {
+                                xmit = pending.removeFirst();
+                            }
                         }
-                        if (xmit != null) {
+
+                        if(xmit == null && toFlush > 0) {
+                            out.flush();
+                            broadcastBytesFlushed(d, packetNum, toFlush);
+                            toFlush = 0;
+                        }
+
+                        if (xmit != null && xmit.length > 0) {
                             socket.getOutputStream().write(xmit);
-                            broadcastBytesSent(d.getAddress(), xmit);
+                            Thread.sleep(100); // TODO: THIS IS FOR TESTING PURPOSES
+                            toFlush += xmit.length;
+                            broadcastBytesSent(d, ++packetNum, xmit);
                         }
                     }
                 }
             } catch (Exception ex) {
-                broadcastException(d.getAddress(), ex);
+                broadcastException(d, ex);
             } finally {
+                if (in != null) {
+                    try {
+                        in.close();
+                    } catch (Exception ex) {
+                        broadcastException(d, ex);
+                    }
+                    in = null;
+                }
+                if (out != null) {
+                    try {
+                        out.close();
+                    } catch (Exception ex) {
+                        broadcastException(d, ex);
+                    }
+                    out = null;
+                }
                 if (socket != null) {
                     try {
                         socket.close();
                     } catch (Exception ex) {
-                        broadcastException(d.getAddress(), ex);
+                        broadcastException(d, ex);
                     }
                     socket = null;
                 }
-                broadcastDisconnected(d.getAddress());
+                broadcastDisconnected(d);
 
                 synchronized (pending) {
                     while (!pending.isEmpty()) {
-                        broadcastBytesNotSent(pending.getFirst());
+                        broadcastBytesNotSent(pending.removeFirst());
                     }
                 }
             }
@@ -141,21 +200,22 @@ public class BluetoothService extends Service {
     public BluetoothService() {
     }
 
-    public static IntentFilter getBroadcastFilter() {
+    public static IntentFilter getBluetoothServiceFilter() {
         IntentFilter f = new IntentFilter();
         f.addAction(BROADCAST_CONNECTED);
         f.addAction(BROADCAST_EXCEPTION);
         f.addAction(BROADCAST_DISCONNECTED);
         f.addAction(BROADCAST_BYTES_SENT);
+        f.addAction(BROADCAST_BYTES_FLUSHED);
         f.addAction(BROADCAST_BYTES_NOT_SENT);
         f.addAction(BROADCAST_BYTES_RECEIVED);
         return f;
     }
 
-    public static void startActionConnect(Context context, String mac) {
+    public static void startActionConnect(Context context, BluetoothDevice d) {
         Intent intent = new Intent(context, BluetoothService.class);
         intent.setAction(ACTION_CONNECT);
-        intent.putExtra(EXTRA_MAC, mac);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
         context.startService(intent);
     }
 
@@ -172,24 +232,21 @@ public class BluetoothService extends Service {
         context.startService(intent);
     }
 
-    protected void broadcastConnected(String mac) {
-        Log.i(getClass().getName(), "connected to " + mac);
+    protected void broadcastConnected(BluetoothDevice d) {
         Intent intent = new Intent(BROADCAST_CONNECTED);
-        intent.putExtra(EXTRA_MAC, mac);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
-    protected void broadcastDisconnected(String mac) {
-        Log.i(getClass().getName(), "disconnected from " + mac);
+    protected void broadcastDisconnected(BluetoothDevice d) {
         Intent intent = new Intent(BROADCAST_DISCONNECTED);
-        intent.putExtra(EXTRA_MAC, mac);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
-    protected void broadcastException(String mac, Exception ex) {
-        Log.w(getClass().getName(), "error on " + mac + ": " + ex.toString());
+    protected void broadcastException(BluetoothDevice d, Exception ex) {
         Intent intent = new Intent(BROADCAST_EXCEPTION);
-        intent.putExtra(EXTRA_MAC, mac);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
 
         StackTraceElement e = null;
         for (StackTraceElement ee : ex.getStackTrace()) {
@@ -203,15 +260,24 @@ public class BluetoothService extends Service {
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
-    protected void broadcastBytesSent(String mac, byte[] bytes) {
-        broadcastBytesSent(mac, bytes, bytes.length);
+    protected void broadcastBytesSent(BluetoothDevice d, int packetNum, byte[] bytes) {
+        broadcastBytesSent(d, packetNum, bytes, bytes.length);
     }
 
-    protected void broadcastBytesSent(String mac, byte[] bytes, int n) {
+    protected void broadcastBytesSent(BluetoothDevice d, int packetNum, byte[] bytes, int n) {
         Intent intent = new Intent(BROADCAST_BYTES_SENT);
-        intent.putExtra(EXTRA_MAC, mac);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
+        intent.putExtra(EXTRA_PACKET_N, packetNum);
         intent.putExtra(EXTRA_BYTES, bytes);
         intent.putExtra(EXTRA_BYTES_N, n);
+        LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
+    }
+
+    protected void broadcastBytesFlushed(BluetoothDevice d, int packetNum, int bytes) {
+        Intent intent = new Intent(BROADCAST_BYTES_FLUSHED);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
+        intent.putExtra(EXTRA_PACKET_N, packetNum);
+        intent.putExtra(EXTRA_BYTES_N, bytes);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
@@ -226,9 +292,9 @@ public class BluetoothService extends Service {
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
-    protected void broadcastBytesReceived(String mac, byte[] bytes, int n) {
+    protected void broadcastBytesReceived(BluetoothDevice d, byte[] bytes, int n) {
         Intent intent = new Intent(BROADCAST_BYTES_RECEIVED);
-        intent.putExtra(EXTRA_MAC, mac);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
         intent.putExtra(EXTRA_BYTES, bytes);
         intent.putExtra(EXTRA_BYTES_N, n);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
@@ -258,8 +324,8 @@ public class BluetoothService extends Service {
             if (intent != null) {
                 final String action = intent.getAction();
                 if (ACTION_CONNECT.equals(action)) {
-                    final String mac = intent.getStringExtra(EXTRA_MAC);
-                    handleActionConnect(mac);
+                    BluetoothDevice d = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                    handleActionConnect(d);
                 } else if (ACTION_DISCONNECT.equals(action)) {
                     handleActionDisconnect();
                 } else if (ACTION_SEND_BYTES.equals(action)) {
@@ -275,8 +341,8 @@ public class BluetoothService extends Service {
 
     }
 
-    private void handleActionConnect(String mac) {
-        currentConnection = new Connection(mac);
+    private void handleActionConnect(BluetoothDevice d) {
+        currentConnection = new Connection(d);
         new Thread(currentConnection).start();
     }
 

@@ -5,10 +5,10 @@ import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
-import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
@@ -21,7 +21,6 @@ import android.view.MenuItem;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
-import android.widget.GridView;
 import android.widget.ListView;
 import android.widget.SeekBar;
 import android.widget.TextView;
@@ -29,8 +28,11 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.List;
 
+import static pmurray_at_bigpond_dot_com.arddrive.BluetoothService.*;
+
 public class MainActivity extends AppCompatActivity {
     private static final int RETRY_CHOOSE_BLUETOOTH = 0xBEEF + 1;
+
 
     static class BroadcastsAdapter extends ArrayAdapter<Intent> {
         public BroadcastsAdapter(Context context, List<Intent> messages) {
@@ -52,8 +54,12 @@ public class MainActivity extends AppCompatActivity {
             // Populate the data into the template view using the data object
 
 
-            if(msg.hasExtra(BluetoothService.EXTRA_MAC)) {
-                mac.setText(msg.getStringExtra(BluetoothService.EXTRA_MAC));
+            StringBuilder sb = new StringBuilder();
+
+            if(msg.hasExtra(BluetoothDevice.EXTRA_DEVICE)) {
+                BluetoothDevice device =
+                        msg.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                mac.setText(device.getName());
             }
             else {
                 mac.setText("NO DEVICE");
@@ -62,12 +68,37 @@ public class MainActivity extends AppCompatActivity {
             if(s!=null) s = s.substring(s.lastIndexOf('.')+1);
             act.setText(s);
 
-            if(msg.hasExtra(BluetoothService.EXTRA_EXCEPTION)) {
-                txt.setText(msg.getStringExtra(BluetoothService.EXTRA_EXCEPTION));
+            if(msg.hasExtra(EXTRA_PACKET_N)) {
+                sb.append("#");
+                sb.append(msg.getIntExtra(EXTRA_PACKET_N, -1));
+                sb.append(" ");
             }
-            else if(msg.hasExtra(BluetoothService.EXTRA_BYTES)) {
-                txt.setText(new String(msg.getByteArrayExtra(BluetoothService.EXTRA_BYTES)));
+
+            if(msg.hasExtra(EXTRA_BYTES_N)) {
+                sb.append(msg.getIntExtra(EXTRA_BYTES_N, -1));
+                sb.append(" ");
             }
+
+
+            if(msg.hasExtra(EXTRA_BYTES)) {
+                byte[] b = msg.getByteArrayExtra(EXTRA_BYTES);
+                sb.append(" of ");
+                sb.append(b.length);
+                sb.append(" <");
+                sb.append(new String(b));
+                sb.append(">");
+            }
+
+            if(msg.hasExtra(EXTRA_EXCEPTION)) {
+                sb.append(msg.getStringExtra(EXTRA_EXCEPTION));
+            }
+
+            if(msg.hasExtra(BluetoothDevice.EXTRA_UUID)) {
+                sb.append(msg.getParcelableExtra(BluetoothDevice.EXTRA_UUID));
+            }
+
+
+            txt.setText(sb);
 
             return convertView;
         }
@@ -88,6 +119,19 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+
+    final BroadcastReceiver btReceiver = new BroadcastReceiver()
+    {
+        @Override
+        public void onReceive(Context context, Intent intent)
+        {
+            while(broadcastsAdapter.getCount() >= 10) {
+                broadcastsAdapter.remove(broadcastsAdapter.getItem(0));
+            }
+            broadcastsAdapter.add(intent);
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -97,13 +141,13 @@ public class MainActivity extends AppCompatActivity {
 
         ((Button)findViewById(R.id.send_foo)).setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                BluetoothService.startActionSendBytes(getApplicationContext(), "foo".getBytes());
+                startActionSendBytes(getApplicationContext(), "foo".getBytes());
             }
         });
 
         ((SeekBar)findViewById(R.id.seekBar)).setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
             public void onProgressChanged(SeekBar var1, int var2, boolean var3)  {
-                BluetoothService.startActionSendBytes(getApplicationContext(), ("{"+var2+"}").getBytes());
+                startActionSendBytes(getApplicationContext(), ("{"+var2+"}").getBytes());
 
             }
 
@@ -121,12 +165,15 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(broadcastReciever, BluetoothService.getBroadcastFilter());
+        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(broadcastReciever, getBluetoothServiceFilter());
+
+        registerReceiver(btReceiver, lowLevelBtFiter());
     }
 
     @Override
     protected void onStop() {
         LocalBroadcastManager.getInstance(getApplicationContext()).unregisterReceiver(broadcastReciever);
+        unregisterReceiver(btReceiver);
         super.onStop();
     }
 
@@ -210,5 +257,20 @@ public class MainActivity extends AppCompatActivity {
             break;
         }
     }
+
+    protected IntentFilter lowLevelBtFiter() {
+        IntentFilter f = new IntentFilter();
+        f.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+        f.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
+        f.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        f.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+        f.addAction(BluetoothDevice.ACTION_CLASS_CHANGED);
+        f.addAction(BluetoothDevice.ACTION_FOUND);
+        f.addAction(BluetoothDevice.ACTION_NAME_CHANGED);
+        f.addAction(BluetoothDevice.ACTION_PAIRING_REQUEST);
+        f.addAction(BluetoothDevice.ACTION_UUID);
+        return f;
+    }
+
 
 }
