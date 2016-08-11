@@ -11,6 +11,7 @@ import android.content.IntentFilter;
 import android.content.res.Configuration;
 import android.os.IBinder;
 import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -24,7 +25,7 @@ public class BluetoothService extends Service {
     private static final String ACTION_SEND_BYTES = "pmurray_at_bigpond_dot_com.arddrive.action.SEND_BYTES";
 
     public static final String BROADCAST_CONNECTED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_CONNECTED";
-    public static final String BROADCAST_CONNECTION_FAILED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_CONNECTION_FAILED";
+    public static final String BROADCAST_EXCEPTION = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_EXCEPTION";
     public static final String BROADCAST_DISCONNECTED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_DISCONNECTED";
     public static final String BROADCAST_BYTES_SENT = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_BYTES_SENT";
     public static final String BROADCAST_BYTES_NOT_SENT = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BROADCAST_BYTES_NOT_SENT";
@@ -33,120 +34,109 @@ public class BluetoothService extends Service {
     // a random uuid
     public static final UUID MY_UUID = UUID.fromString("b0cb6270-5f19-11e6-8b77-86f30ca893d3");
 
-    private static final String EXTRA_MAC = "pmurray_at_bigpond_dot_com.arddrive.extra.MAC";
-    private static final String EXTRA_BYTES = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES";
-    private static final String EXTRA_BYTES_N = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES_N";
-
-    final Object mutex = new Object();
-
-    final LinkedList<byte[]> pending = new LinkedList<byte[]>();
-
-    volatile Thread worker = null;
-    volatile String connectedTo = null;
+    public static final String EXTRA_MAC = "pmurray_at_bigpond_dot_com.arddrive.extra.MAC";
+    public static final String EXTRA_BYTES = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES";
+    public static final String EXTRA_BYTES_N = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES_N";
+    public static final String EXTRA_EXCEPTION = "pmurray_at_bigpond_dot_com.arddrive.extra.EXCEPTION";
 
     BluetoothAdapter btAdapter;
 
-    class ConnectToDevice implements Runnable {
-        BluetoothDevice d;
+    class Connection implements Runnable {
+        private final String mac;
+        private BluetoothDevice d;
+        private BluetoothSocket socket = null;
 
-        ConnectToDevice(BluetoothDevice d) {
-            this.d = d;
+        // this would be better done with nio, obviously
+        private final LinkedList<byte[]> pending = new LinkedList<byte[]>();
+        private byte[] buffer = new byte[1024];
+
+        Connection(String mac) {
+            this.mac = mac;
         }
 
+        void send(byte[] bytes, int n) {
+            if (n <= 0) return;
+            if (n > bytes.length) n = bytes.length;
+            byte[] b = new byte[n];
+            System.arraycopy(b, 0, bytes, 0, n);
+
+            synchronized (this) {
+                if (socket == null) {
+                    broadcastBytesNotSent(b, n);
+                } else {
+                    pending.add(b);
+                }
+            }
+        }
+
+
         public void run() {
-            BluetoothSocket socket = null;
             try {
-                socket = d.createInsecureRfcommSocketToServiceRecord(MY_UUID);
+                d = btAdapter.getRemoteDevice(mac);
+                if (d == null) {
+                    throw new IOException(mac + " not found");
+                }
+
+                /*  sticky - needs admin permission
+                if (d.getBondState() == BluetoothDevice.BOND_NONE) {
+                    if (!d.createBond()) {
+                        throw new IOException("cannot bond with " + mac);
+                    }
+                }
+
+                while (d.getBondState() != BluetoothDevice.BOND_BONDED) {
+                    if (currentConnection != this) {
+                        return;
+                    }
+                }
+                */
+
+                socket = d.createRfcommSocketToServiceRecord(MY_UUID);
                 socket.connect();
 
-                synchronized (mutex) {
-                    if(worker == Thread.currentThread()) {
-                        connectedTo = d.getAddress();
-                        worker = new Thread(new TalkToBt(socket));
-                        worker.start();
-                        broadcastConnected(d.getAddress());
-                    }
-                    else {
-                        try {
-                            socket.close();
-                        }
-                        catch(Exception ex) {}
-                    }
-                }
+                broadcastConnected(d.getAddress());
 
-            } catch (IOException e) {
-                if(socket != null) {
-                    try {
-                        socket.close();
-                    }
-                    catch(Exception ex) {}
-                }
-                synchronized (mutex) {
-                    if(worker == Thread.currentThread()) {
-                        worker = null;
-                        broadcastConnectionFailed(d.getAddress());
-                    }
-                }
-            }
-        }
-    }
-
-    ;
-
-    class TalkToBt implements Runnable {
-        final BluetoothSocket socket;
-        final byte[] buffer = new byte[1024];
-
-        TalkToBt(BluetoothSocket socket) {
-            this.socket = socket;
-        }
-
-        public void run() {
-            try {
-                for (; ; ) {
-                    byte[] toSend = null;
-                    String _connectedTo;
-
-                    synchronized (mutex) {
-                        if (Thread.currentThread() != worker) {
-                            throw new IOException();
-                        }
-
-                        if(!pending.isEmpty()) {
-                            toSend = pending.getFirst();
-                        }
-
-                        _connectedTo = connectedTo;
-                    }
-
-                    if(toSend != null) {
-                        socket.getOutputStream().write(toSend);
-                        broadcastBytesSent(_connectedTo, toSend, toSend.length);
-                    }
-
-                    if(socket.getInputStream().available()>0) {
+                while (currentConnection == this) {
+                    if (socket.getInputStream().available() > 0) {
                         int n = socket.getInputStream().read(buffer);
                         if (n > 0) {
-                            broadcastBytesReceived(_connectedTo, buffer, n);
+                            broadcastBytesReceived(d.getAddress(), buffer, n);
+                        }
+                    } else {
+                        byte[] xmit = null;
+                        synchronized (pending) {
+                            if (!pending.isEmpty())
+                                xmit = pending.getFirst();
+                        }
+                        if (xmit != null) {
+                            socket.getOutputStream().write(xmit);
+                            broadcastBytesSent(d.getAddress(), xmit);
                         }
                     }
                 }
-            }
-            catch(IOException ex) {
-                try { socket.close();} catch(Exception ex2) {}
+            } catch (Exception ex) {
+                broadcastException(d.getAddress(), ex);
+            } finally {
+                if (socket != null) {
+                    try {
+                        socket.close();
+                    } catch (Exception ex) {
+                        broadcastException(d.getAddress(), ex);
+                    }
+                    socket = null;
+                }
+                broadcastDisconnected(d.getAddress());
 
-                synchronized (mutex) {
-                    if (Thread.currentThread() == worker) {
-                        broadcastDisonnected(connectedTo);
-                        worker = null; // signal to all threads that they are to stop`
-                        connectedTo = null;
-                        pending.clear();
+                synchronized (pending) {
+                    while (!pending.isEmpty()) {
+                        broadcastBytesNotSent(pending.getFirst());
                     }
                 }
-
             }
         }
     }
+
+    volatile Connection currentConnection = null; // must be volatile
 
     public BluetoothService() {
     }
@@ -154,7 +144,7 @@ public class BluetoothService extends Service {
     public static IntentFilter getBroadcastFilter() {
         IntentFilter f = new IntentFilter();
         f.addAction(BROADCAST_CONNECTED);
-        f.addAction(BROADCAST_CONNECTION_FAILED);
+        f.addAction(BROADCAST_EXCEPTION);
         f.addAction(BROADCAST_DISCONNECTED);
         f.addAction(BROADCAST_BYTES_SENT);
         f.addAction(BROADCAST_BYTES_NOT_SENT);
@@ -183,21 +173,38 @@ public class BluetoothService extends Service {
     }
 
     protected void broadcastConnected(String mac) {
+        Log.i(getClass().getName(), "connected to " + mac);
         Intent intent = new Intent(BROADCAST_CONNECTED);
         intent.putExtra(EXTRA_MAC, mac);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
-    protected void broadcastConnectionFailed(String mac) {
-        Intent intent = new Intent(BROADCAST_CONNECTION_FAILED);
+    protected void broadcastDisconnected(String mac) {
+        Log.i(getClass().getName(), "disconnected from " + mac);
+        Intent intent = new Intent(BROADCAST_DISCONNECTED);
         intent.putExtra(EXTRA_MAC, mac);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
-    protected void broadcastDisonnected(String mac) {
-        Intent intent = new Intent(BROADCAST_DISCONNECTED);
+    protected void broadcastException(String mac, Exception ex) {
+        Log.w(getClass().getName(), "error on " + mac + ": " + ex.toString());
+        Intent intent = new Intent(BROADCAST_EXCEPTION);
         intent.putExtra(EXTRA_MAC, mac);
+
+        StackTraceElement e = null;
+        for (StackTraceElement ee : ex.getStackTrace()) {
+            if (ee.getClassName().startsWith("pmurray_at_bigpond_dot_com.arddrive.")) {
+                e = ee;
+                break;
+            }
+        }
+
+        intent.putExtra(EXTRA_EXCEPTION, (e == null ? "" : e.getMethodName() + "(" + e.getLineNumber() + ")") + ex.toString());
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
+    }
+
+    protected void broadcastBytesSent(String mac, byte[] bytes) {
+        broadcastBytesSent(mac, bytes, bytes.length);
     }
 
     protected void broadcastBytesSent(String mac, byte[] bytes, int n) {
@@ -209,8 +216,13 @@ public class BluetoothService extends Service {
     }
 
     protected void broadcastBytesNotSent(byte[] bytes) {
+        broadcastBytesNotSent(bytes, bytes.length);
+    }
+
+    protected void broadcastBytesNotSent(byte[] bytes, int n) {
         Intent intent = new Intent(BROADCAST_BYTES_NOT_SENT);
         intent.putExtra(EXTRA_BYTES, bytes);
+        intent.putExtra(EXTRA_BYTES_N, n);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
@@ -223,12 +235,16 @@ public class BluetoothService extends Service {
     }
 
     @Override
+    @Deprecated
     public void onStart(Intent intent, int startId) {
         handleCommand(intent);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (btAdapter == null) {
+            btAdapter = BluetoothAdapter.getDefaultAdapter();
+        }
         handleCommand(intent);
         return START_STICKY;
     }
@@ -238,61 +254,41 @@ public class BluetoothService extends Service {
     }
 
     protected void handleCommand(Intent intent) {
-        if (intent != null) {
-            final String action = intent.getAction();
-            if (ACTION_CONNECT.equals(action)) {
-                final String mac = intent.getStringExtra(EXTRA_MAC);
-                handleActionConnect(mac);
-            } else if (ACTION_DISCONNECT.equals(action)) {
-                handleActionDisconnect();
-            } else if (ACTION_SEND_BYTES.equals(action)) {
-                final byte[] bytes = intent.getByteArrayExtra(EXTRA_BYTES);
-                handleActionSendBytes(bytes);
+        try {
+            if (intent != null) {
+                final String action = intent.getAction();
+                if (ACTION_CONNECT.equals(action)) {
+                    final String mac = intent.getStringExtra(EXTRA_MAC);
+                    handleActionConnect(mac);
+                } else if (ACTION_DISCONNECT.equals(action)) {
+                    handleActionDisconnect();
+                } else if (ACTION_SEND_BYTES.equals(action)) {
+                    final byte[] bytes = intent.getByteArrayExtra(EXTRA_BYTES);
+                    final int n = intent.getIntExtra(EXTRA_BYTES_N, bytes.length);
+                    handleActionSendBytes(bytes, n);
+                }
             }
+        } catch (RuntimeException ex) {
+            Log.e(getClass().getName(), intent.getAction(), ex);
+            throw ex;
         }
+
     }
 
     private void handleActionConnect(String mac) {
-        // I assume that we have bluetooth permission by this stage
-
-        synchronized (mutex) {
-            if(connectedTo != null) {
-                broadcastDisonnected(connectedTo);
-            }
-            worker = null; // signal to all threads that they are to stop`
-            connectedTo = null;
-            pending.clear();
-        }
-
-        for (BluetoothDevice d : btAdapter.getBondedDevices()) {
-            if (d.getAddress().equals(mac)) {
-                synchronized (mutex) {
-                    worker = new Thread(new ConnectToDevice(d));
-                    worker.start();
-                }
-            }
-        }
-
+        currentConnection = new Connection(mac);
+        new Thread(currentConnection).start();
     }
 
     private void handleActionDisconnect() {
-        synchronized (mutex) {
-            if(connectedTo != null) {
-                broadcastDisonnected(connectedTo);
-            }
-            worker = null; // signal to all threads that they are to stop`
-            connectedTo = null;
-            pending.clear();
-        }
+        currentConnection = null;
     }
 
-    private void handleActionSendBytes(byte[] bytes) {
-        synchronized(mutex) {
-            if (connectedTo == null) {
-                broadcastBytesNotSent(bytes);
-            } else {
-                pending.add(bytes);
-            }
+    private void handleActionSendBytes(byte[] bytes, int n) {
+        if (currentConnection == null) {
+            broadcastBytesNotSent(bytes, n);
+        } else {
+            currentConnection.send(bytes, n);
         }
     }
 

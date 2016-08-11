@@ -1,6 +1,7 @@
 package pmurray_at_bigpond_dot_com.arddrive;
 
 import android.Manifest;
+import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -13,22 +14,77 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.ViewGroup;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.GridView;
+import android.widget.ListView;
 import android.widget.SeekBar;
+import android.widget.TextView;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
     private static final int RETRY_CHOOSE_BLUETOOTH = 0xBEEF + 1;
+
+    static class BroadcastsAdapter extends ArrayAdapter<Intent> {
+        public BroadcastsAdapter(Context context, List<Intent> messages) {
+            super(context, R.layout.device_list_item, messages);
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            // Get the data item for this position
+            Intent msg = getItem(position);
+            // Check if an existing view is being reused, otherwise inflate the view
+            if (convertView == null) {
+                convertView = LayoutInflater.from(getContext()).inflate(R.layout.broadcast_list_item, parent, false);
+            }
+            // Lookup view for data population
+            TextView mac = (TextView) convertView.findViewById(R.id.broadcast_mac);
+            TextView act = (TextView) convertView.findViewById(R.id.broadcast_action);
+            TextView txt = (TextView) convertView.findViewById(R.id.broadcast_text);
+            // Populate the data into the template view using the data object
+
+
+            if(msg.hasExtra(BluetoothService.EXTRA_MAC)) {
+                mac.setText(msg.getStringExtra(BluetoothService.EXTRA_MAC));
+            }
+            else {
+                mac.setText("NO DEVICE");
+            }
+            String s = msg.getAction();
+            if(s!=null) s = s.substring(s.lastIndexOf('.')+1);
+            act.setText(s);
+
+            if(msg.hasExtra(BluetoothService.EXTRA_EXCEPTION)) {
+                txt.setText(msg.getStringExtra(BluetoothService.EXTRA_EXCEPTION));
+            }
+            else if(msg.hasExtra(BluetoothService.EXTRA_BYTES)) {
+                txt.setText(new String(msg.getByteArrayExtra(BluetoothService.EXTRA_BYTES)));
+            }
+
+            return convertView;
+        }
+    }
+
+    BroadcastsAdapter broadcastsAdapter;
+
 
     final BroadcastReceiver broadcastReciever = new BroadcastReceiver()
     {
         @Override
         public void onReceive(Context context, Intent intent)
         {
-            String action = intent.getAction();
-            Snackbar.make(findViewById(android.R.id.content), action, Snackbar.LENGTH_LONG).show();
+            while(broadcastsAdapter.getCount() >= 10) {
+                broadcastsAdapter.remove(broadcastsAdapter.getItem(0));
+            }
+            broadcastsAdapter.add(intent);
         }
     };
 
@@ -57,6 +113,9 @@ public class MainActivity extends AppCompatActivity {
 
         });
 
+        broadcastsAdapter = new BroadcastsAdapter(this, new ArrayList<Intent>());
+        ListView broadcastList = (ListView) findViewById(R.id.broadcastList);
+        broadcastList.setAdapter(broadcastsAdapter);
     }
 
     @Override
