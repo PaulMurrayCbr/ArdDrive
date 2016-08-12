@@ -8,14 +8,14 @@
         <option name="gradleHome" value="$APPLICATION_HOME_DIR$/gradle/gradle-2.10" />
         <option name="modules">
           <set>
-            <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/app" />
+            <option value="$USER_HOME$/git/ArdDrive/Android" />
+            <option value="$USER_HOME$/git/ArdDrive/Android/app" />
           </set>
         </option>
         <option name="myModules">
           <set>
-            <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/app" />
+            <option value="$USER_HOME$/git/ArdDrive/Android" />
+            <option value="$USER_HOME$/git/ArdDrive/Android/app" />
           </set>
         </option>
       </GradleProjectSettings>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$USER_HOME$/git/ArdDrive/Android/Android.iml" filepath="$USER_HOME$/git/ArdDrive/Android/Android.iml" />
+      <module fileurl="file://$USER_HOME$/git/ArdDrive/Android/app/app.iml" filepath="$USER_HOME$/git/ArdDrive/Android/app/app.iml" />
+    </modules>
+  </component>
+</project>
