@@ -14,6 +14,7 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.LocalBroadcastManager;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Base64;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.Menu;
@@ -152,13 +153,23 @@ public class MainActivity extends AppCompatActivity {
 
         ((Button) findViewById(R.id.send_foo)).setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                startActionSendBytes(getApplicationContext(), "foo".getBytes());
+                startActionSendBytes(getApplicationContext(), "<".getBytes());
+                startActionSendBytes(getApplicationContext(), Base64.encode("foo".getBytes(), Base64.DEFAULT));
+                startActionSendBytes(getApplicationContext(), "#>".getBytes());
             }
         });
 
         ((SeekBar) findViewById(R.id.seekBar)).setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar var1, int var2, boolean var3) {
-                startActionSendBytes(getApplicationContext(), ("{" + var2 + "}").getBytes());
+                startActionSendBytes(getApplicationContext(), "<".getBytes());
+                startActionSendBytes(getApplicationContext(), Base64.encode(
+                        (
+                                "SLIDER = " +
+                        Integer.toString(var2)
+                                + " ;"
+                        )
+                                .getBytes(), Base64.DEFAULT));
+                startActionSendBytes(getApplicationContext(), "#>".getBytes());
 
             }
 
