@@ -75,3 +75,10 @@ The incoming stream reader gets this sequence of stuff
 * checksum is ok, good to go.
 
 # Well, that's the plan, anyway.
+
+Maybe 'b', 's', 'i', 'l' for 1,2,4,8-byte quantities.
+
+Maybe I should just go "meh" and transmit the C structures, and to hell with it. I'd like some sort of checksumming, though. the <data#sum> method isn't too bad. With a '!' to indicate some sort of error.
+
+Yeah - fukkit. Easy is better.
+
