@@ -25,8 +25,9 @@ class BtReader {
     class Callback {
       public:
         virtual void transition(BtReader::BtStreamState from, BtReader::BtStreamState to) {}
-        virtual void gotBytes(byte *buf, int ct) {}
+        virtual void gotBytes(byte *buf, int ct) = 0;
         virtual void bufferExceeded(byte *buf, int ct) {}
+        virtual void checksumMismatch(byte *buf, int ct, uint32_t expected, uint32_t received)  {}
     } &callback;
 
 
@@ -37,8 +38,8 @@ class BtReader {
     // the chunk decoder overflows, so we need to make room
     byte buffer[BUFLEN + 4];
     int bufCt;
-    int checksumComputed;
-    int checksumRead;
+    uint32_t checksumComputed;
+    uint32_t checksumRead;
 
     BtReader(Stream &in, Callback &callback) : in(in), callback(callback) {
       transition_to_start();
@@ -51,7 +52,6 @@ class BtReader {
 
         int ch = in.read();
         if (ch == -1) return;
-
         if (ch <= ' ') return; // ignore white space
 
         switch (state) {
@@ -67,7 +67,9 @@ class BtReader {
               transitionTo(BT_GOT_1);
             }
             else if (ch == '#') {
+              checksumRead = 0;
               transitionTo(BT_CHECKSUM);
+              
             }
             else {
               transitionTo(BT_ERROR);
@@ -110,10 +112,18 @@ class BtReader {
             break;
 
           case BT_CHECKSUM:
-            if (ch == '>') {
-              // check checksum here
+            if (ch >= '0' && ch <= '7') {
+              checksumRead = checksumRead << 3 | (ch - '0');
+            }
+            else if (ch == '>') {
               buffer[bufCt] = 0;
-              callback.gotBytes(buffer, bufCt);
+
+              if (checksumComputed != checksumRead) {
+                callback.checksumMismatch(buffer, bufCt, checksumComputed, checksumRead);
+              }
+              else {
+                callback.gotBytes(buffer, bufCt);
+              }
               transition_to_start();
             }
             break;
@@ -129,7 +139,7 @@ class BtReader {
 
     void transition_to_start() {
       bufCt = 0;
-      checksumComputed = 0;
+      checksumComputed = 0xDEBB1E;
       checksumRead = 0;
       transitionTo(BT_START);
     }
@@ -182,9 +192,10 @@ class BtReader {
       }
 
       buffer[bufCt++] = (stage >> 16);
+      checksumComputed = ((checksumComputed << 19) ^ (checksumComputed >> 5) ^ buffer[bufCt - 1]) & 0xFFFFFF;
 
-      if(base64Chunk[2]=='=') return true;  
-      
+      if (base64Chunk[2] == '=') return true;
+
       if (bufCt >= BUFLEN) {
         buffer[BUFLEN] = 0;
         callback.bufferExceeded(buffer, bufCt);
@@ -192,8 +203,9 @@ class BtReader {
       }
 
       buffer[bufCt++] = (stage >> 8);
+      checksumComputed = ((checksumComputed << 19) ^ (checksumComputed >> 5) ^ buffer[bufCt - 1]) & 0xFFFFFF;
 
-      if(base64Chunk[3]=='=') return true;  
+      if (base64Chunk[3] == '=') return true;
 
       if (bufCt >= BUFLEN) {
         buffer[BUFLEN] = 0;
@@ -202,6 +214,7 @@ class BtReader {
       }
 
       buffer[bufCt++] = (stage >> 0);
+      checksumComputed = ((checksumComputed << 19) ^ (checksumComputed >> 5) ^ buffer[bufCt - 1]) & 0xFFFFFF;
 
       return true;
     }
@@ -218,6 +231,20 @@ class Callback : public BtReader::Callback {
       Serial.println();
       Serial.print("GOT STRING ");
       Serial.print('<');
+      Serial.print((char *) buf);
+      Serial.println('>');
+    }
+
+    void checksumMismatch(byte *buf, int ct, uint32_t expected, uint32_t received)  {
+      buf[ct] = 0;
+      Serial.println();
+      Serial.print("CHECKSUM MISMATCH ");
+      for (int i = 21; i >= 0; i -= 3)
+        Serial.print((char)(((expected >> i) & 7) + '0'));
+      Serial.print(" =/= ");
+      for (int i = 21; i >= 0; i -= 3)
+        Serial.print((char)(((received >> i) & 7) + '0'));
+      Serial.print(" <");
       Serial.print((char *) buf);
       Serial.println('>');
     }

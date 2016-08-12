@@ -26,6 +26,8 @@ import android.widget.ListView;
 import android.widget.SeekBar;
 import android.widget.TextView;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -144,6 +146,29 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+    static byte[] makeMsg(String s) {
+        byte[] bytes = s.getBytes();
+        int hash = 0xDEBB1E;
+        //a very, very simple hash function
+        for (byte b : bytes) {
+            hash = ((hash << 19) ^ (hash >> 5) ^ b) & 0xFFFFFF;
+        }
+
+        ByteArrayOutputStream bs = new ByteArrayOutputStream();
+        try {
+            bs.write('<');
+            bs.write(Base64.encode(bytes, Base64.DEFAULT));
+            bs.write('#');
+            for (int i = 21; i >= 0; i -= 3) {
+                bs.write((char) ('0' + ((hash >> i) & 7)));
+            }
+            bs.write('>');
+        } catch (IOException ex) {
+        } // this never happens
+
+        return bs.toByteArray();
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -153,24 +178,13 @@ public class MainActivity extends AppCompatActivity {
 
         ((Button) findViewById(R.id.send_foo)).setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                startActionSendBytes(getApplicationContext(), "<".getBytes());
-                startActionSendBytes(getApplicationContext(), Base64.encode("foo".getBytes(), Base64.DEFAULT));
-                startActionSendBytes(getApplicationContext(), "#>".getBytes());
+                startActionSendBytes(getApplicationContext(), makeMsg("foo"));
             }
         });
 
         ((SeekBar) findViewById(R.id.seekBar)).setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar var1, int var2, boolean var3) {
-                startActionSendBytes(getApplicationContext(), "<".getBytes());
-                startActionSendBytes(getApplicationContext(), Base64.encode(
-                        (
-                                "SLIDER = " +
-                        Integer.toString(var2)
-                                + " ;"
-                        )
-                                .getBytes(), Base64.DEFAULT));
-                startActionSendBytes(getApplicationContext(), "#>".getBytes());
-
+                startActionSendBytes(getApplicationContext(), makeMsg("SLIDER:" + Integer.toString(var2) + " ;"));
             }
 
             public void onStartTrackingTouch(SeekBar var1) {
