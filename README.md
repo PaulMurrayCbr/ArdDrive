@@ -4,5 +4,4 @@ An android app that drives an Arduino over bluetooth. Works with my el-cheapo Sa
 ## TODO
 * fix layout of main activity - the fragment is drawing itself on top of the menu.
 * consider protocol for byte stream. JSON? ASN?
-* alter repo so that the arduion project and the andriod project are each contained in it
 * write a sample app that actually does some blinkenlights
