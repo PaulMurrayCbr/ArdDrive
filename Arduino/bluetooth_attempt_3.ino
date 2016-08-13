@@ -5,11 +5,10 @@ const byte rxPin = 8;
 
 SoftwareSerial bt(rxPin, txPin);
 
-class BtCallback;
-
 class BtReader {
   public:
     Stream &in;
+    uint32_t mostRecentHeartbeatMs;
 
     enum BtStreamState {
       BT_START = 0,
@@ -45,7 +44,9 @@ class BtReader {
       transition_to_start();
     }
 
-    void setup() {}
+    void setup() {
+      mostRecentHeartbeatMs = millis();
+    }
 
     void loop() {
       while (in.available() > 0) {
@@ -53,6 +54,12 @@ class BtReader {
         int ch = in.read();
         if (ch == -1) return;
         if (ch <= ' ') return; // ignore white space
+
+        // asterisks are a heartbeat signal
+        if (ch == '*') {
+          mostRecentHeartbeatMs = millis();
+          return;
+        }
 
         switch (state) {
           case BT_START:
@@ -69,7 +76,7 @@ class BtReader {
             else if (ch == '#') {
               checksumRead = 0;
               transitionTo(BT_CHECKSUM);
-              
+
             }
             else {
               transitionTo(BT_ERROR);
@@ -124,7 +131,9 @@ class BtReader {
               else {
                 callback.gotBytes(buffer, bufCt);
               }
-              transition_to_start();
+            }
+            else {
+              transitionTo(BT_ERROR);
             }
             break;
 
@@ -220,6 +229,63 @@ class BtReader {
     }
 };
 
+// TODO
+// class BtReaderStream : public Stream
+
+class BtWriter {
+  public:
+    SoftwareSerial &out;
+    uint32_t mostRecentHeartbeatMs;
+
+    // NOTE!!! Code relies on put/pop wrapping!
+    char buf[256];
+    uint8_t bufPut = 0;
+    uint8_t bufPop = 0;
+
+    BtWriter(SoftwareSerial &out) : out(out) {}
+
+    void setup() {
+      mostRecentHeartbeatMs = millis();
+    }
+
+    void loop() {
+      if (millis() - mostRecentHeartbeatMs > 5000) {
+        mostRecentHeartbeatMs = millis();
+        bt.write('*');
+      }
+    }
+
+    void write(char *bytes, int offs, int len) {
+      flush();
+
+      putCh('<');
+      bytes += offs;
+      while(len-- > 0) putCh(*bytes++);
+      putCh('#');
+      putCh('>');
+      
+    }
+
+    void putCh(char c) {
+      if(((uint8_t)bufPut + 1) == bufPop) {
+        flushToSerial();
+      }
+      buf[bufPut++] = c;
+    }
+
+    void flush() {
+      flushToSerial();
+      out.flush();
+    }
+
+    void flushToSerial() {
+      while(bufPut != bufPop) out.write(buf[bufPop++]);
+    }
+};
+
+// TODO
+// class BtWriterStream : public Stream
+
 
 class Callback : public BtReader::Callback {
   public:
@@ -262,6 +328,7 @@ class Callback : public BtReader::Callback {
 } callback;
 
 BtReader reader(bt, callback);
+BtWriter writer(bt);
 
 void setup() {
   // put your setup code here, to run once:
@@ -281,20 +348,13 @@ void setup() {
   }
   Serial.println(" 0");
 
-  reader.setup();
   callback.setup();
-
+  reader.setup();
+  writer.setup();
 }
-
-unsigned long heartbeatMs;
 
 void loop() {
   // put your main code here, to run repeatedly:
-
-  if (millis() - heartbeatMs > 5000) {
-    heartbeatMs = millis();
-    bt.write("heartbeat\n");
-  }
 
   if (Serial.available()) {
     int ch = Serial.read();
@@ -304,6 +364,7 @@ void loop() {
   }
 
   reader.loop();
+  writer.loop();
   callback.loop();
 
 }
