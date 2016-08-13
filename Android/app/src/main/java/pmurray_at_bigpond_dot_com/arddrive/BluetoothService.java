@@ -38,7 +38,7 @@ public class BluetoothService extends Service {
 
     /**
      * From the docs:
-     *
+     * <p/>
      * Hint: If you are connecting to a Bluetooth serial board then try using the well-known SPP
      * UUID 00001101-0000-1000-8000-00805F9B34FB. However if you are connecting to an Android peer
      * then please generate your own unique UUID.
@@ -47,7 +47,8 @@ public class BluetoothService extends Service {
     public static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     public static final String EXTRA_BYTES = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES";
-    public static final String EXTRA_PACKET_N = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_PACKET_N";
+    public static final String EXTRA_SERIAL_RX = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_SERIAL_RX";
+    public static final String EXTRA_SERIAL_TX = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_SERIAL_TX";
     public static final String EXTRA_BYTES_N = "pmurray_at_bigpond_dot_com.arddrive.extra.EXTRA_BYTES_N";
     public static final String EXTRA_EXCEPTION = "pmurray_at_bigpond_dot_com.arddrive.extra.EXCEPTION";
 
@@ -59,7 +60,7 @@ public class BluetoothService extends Service {
 
         // this would be better done with nio, obviously
         private final LinkedList<byte[]> pending = new LinkedList<byte[]>();
-        private byte[] buffer = new byte[1024];
+        private byte[] buffer = new byte[1024+5]; // max bluetooth message is 1024 bytes. 5 is slop.
 
         Connection(BluetoothDevice d) {
             this.d = d;
@@ -85,7 +86,8 @@ public class BluetoothService extends Service {
 
             InputStream in = null;
             OutputStream out = null;
-            int packetNum = 0;
+            int txSerial = 0;
+            int rxSerial = 0;
 
             try {
                 btAdapter.cancelDiscovery();
@@ -101,9 +103,10 @@ public class BluetoothService extends Service {
 
                 while (currentConnection == this && socket.isConnected()) {
                     if (in.available() > 0) {
-                        int n = in.read(buffer);
+                        ++rxSerial;
+                        int n  = in.read(buffer);
                         if (n > 0) {
-                            broadcastBytesReceived(d, buffer, n);
+                            broadcastBytesReceived(d, rxSerial, buffer, n);
                         }
                     } else {
                         byte[] xmit = null;
@@ -113,16 +116,16 @@ public class BluetoothService extends Service {
                             }
                         }
 
-                        if(xmit == null && toFlush > 0) {
+                        if (xmit == null && toFlush > 0) {
                             out.flush();
-                            broadcastBytesFlushed(d, packetNum, toFlush);
+                            broadcastBytesFlushed(d, txSerial, toFlush);
                             toFlush = 0;
                         }
 
                         if (xmit != null && xmit.length > 0) {
                             socket.getOutputStream().write(xmit);
                             toFlush += xmit.length;
-                            broadcastBytesSent(d, ++packetNum, xmit);
+                            broadcastBytesSent(d, ++txSerial, xmit);
                         }
                     }
                 }
@@ -233,19 +236,19 @@ public class BluetoothService extends Service {
         broadcastBytesSent(d, packetNum, bytes, bytes.length);
     }
 
-    protected void broadcastBytesSent(BluetoothDevice d, int packetNum, byte[] bytes, int n) {
+    protected void broadcastBytesSent(BluetoothDevice d, int txSerial, byte[] bytes, int n) {
         Intent intent = new Intent(BROADCAST_BYTES_SENT);
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
-        intent.putExtra(EXTRA_PACKET_N, packetNum);
+        intent.putExtra(EXTRA_SERIAL_TX, txSerial);
         intent.putExtra(EXTRA_BYTES, bytes);
         intent.putExtra(EXTRA_BYTES_N, n);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
-    protected void broadcastBytesFlushed(BluetoothDevice d, int packetNum, int bytes) {
+    protected void broadcastBytesFlushed(BluetoothDevice d, int txSerial, int bytes) {
         Intent intent = new Intent(BROADCAST_BYTES_FLUSHED);
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
-        intent.putExtra(EXTRA_PACKET_N, packetNum);
+        intent.putExtra(EXTRA_SERIAL_TX, txSerial);
         intent.putExtra(EXTRA_BYTES_N, bytes);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
@@ -261,9 +264,10 @@ public class BluetoothService extends Service {
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
-    protected void broadcastBytesReceived(BluetoothDevice d, byte[] bytes, int n) {
+    protected void broadcastBytesReceived(BluetoothDevice d, int rxSerial, byte[] bytes, int n) {
         Intent intent = new Intent(BROADCAST_BYTES_RECEIVED);
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
+        intent.putExtra(EXTRA_SERIAL_RX, rxSerial);
         intent.putExtra(EXTRA_BYTES, bytes);
         intent.putExtra(EXTRA_BYTES_N, n);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);

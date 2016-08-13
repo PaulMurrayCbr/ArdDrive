@@ -36,63 +36,53 @@ import static pmurray_at_bigpond_dot_com.arddrive.BluetoothService.*;
 public class MainActivity extends AppCompatActivity {
     private static final int RETRY_CHOOSE_BLUETOOTH = 0xBEEF + 1;
 
+    static class MyThing {
 
-    static class BroadcastsAdapter extends ArrayAdapter<Intent> {
-        public BroadcastsAdapter(Context context, List<Intent> messages) {
-            super(context, R.layout.device_list_item, messages);
-        }
+        final String mac;
+        final String act;
+        final int tx, rx, nb;
+        final String uuid;
+        final String txt;
 
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            // Get the data item for this position
-            Intent msg = getItem(position);
-            // Check if an existing view is being reused, otherwise inflate the view
-            if (convertView == null) {
-                convertView = LayoutInflater.from(getContext()).inflate(R.layout.broadcast_list_item, parent, false);
-            }
-            // Lookup view for data population
-            TextView mac = (TextView) convertView.findViewById(R.id.broadcast_mac);
-            TextView act = (TextView) convertView.findViewById(R.id.broadcast_action);
-            TextView txt = (TextView) convertView.findViewById(R.id.broadcast_text);
-            // Populate the data into the template view using the data object
-
-
-            StringBuilder sb = new StringBuilder();
-
+        MyThing(Intent msg) {
             if (msg.hasExtra(BluetoothDevice.EXTRA_DEVICE)) {
                 BluetoothDevice device =
                         msg.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-                mac.setText(device.getName());
+                mac = device.getName();
             } else {
-                mac.setText("NO DEVICE");
+                mac = "NO DEVICE";
             }
+
             String s = msg.getAction();
             if (s != null) s = s.substring(s.lastIndexOf('.') + 1);
-            act.setText(s);
+            act = (s);
 
-            if (msg.hasExtra(EXTRA_PACKET_N)) {
-                sb.append("#");
-                sb.append(msg.getIntExtra(EXTRA_PACKET_N, -1));
-                sb.append(" ");
+            if (msg.hasExtra(EXTRA_SERIAL_TX)) {
+                tx = msg.getIntExtra(EXTRA_SERIAL_TX, -1);
+            } else {
+                tx = -1;
             }
 
-            int bytes = -1;
+            if (msg.hasExtra(EXTRA_SERIAL_RX)) {
+                rx = msg.getIntExtra(EXTRA_SERIAL_RX, -1);
+            } else rx = -1;
+
+
+            if (msg.hasExtra(BluetoothDevice.EXTRA_UUID)) {
+                uuid = (msg.getParcelableExtra(BluetoothDevice.EXTRA_UUID).toString());
+            } else uuid = null;
 
             if (msg.hasExtra(EXTRA_BYTES_N)) {
-                bytes = msg.getIntExtra(EXTRA_BYTES_N, -1);
-                sb.append(bytes);
-                sb.append(" ");
-            }
+                nb = msg.getIntExtra(EXTRA_BYTES_N, -1);
+            } else nb = -1;
 
+            StringBuilder sb = new StringBuilder();
+            sb.append(' ');
 
             if (msg.hasExtra(EXTRA_BYTES)) {
                 byte[] b = msg.getByteArrayExtra(EXTRA_BYTES);
-                sb.append(" of ");
-                sb.append(b.length);
-                if (bytes == -1 || bytes > b.length) {
-                    bytes = b.length;
-                }
-                sb.append(" <");
+                int bytes = nb == -1 || nb > b.length ? b.length : nb;
+                sb.append(" [");
                 for (int i = 0; i < bytes; i++) {
                     byte bb = b[i];
                     if (bb >= ' ' && bb < 127)
@@ -104,19 +94,47 @@ public class MainActivity extends AppCompatActivity {
                         sb.append((char) (bbb + (bbb < 10 ? '0' : 'a' - 10)));
                     }
                 }
-                sb.append(">");
+                sb.append("]");
             }
 
             if (msg.hasExtra(EXTRA_EXCEPTION)) {
                 sb.append(msg.getStringExtra(EXTRA_EXCEPTION));
             }
 
-            if (msg.hasExtra(BluetoothDevice.EXTRA_UUID)) {
-                sb.append(msg.getParcelableExtra(BluetoothDevice.EXTRA_UUID));
+            txt = sb.toString();
+        }
+    }
+
+
+    static class BroadcastsAdapter extends ArrayAdapter<MyThing> {
+        public BroadcastsAdapter(Context context, List<MyThing> messages) {
+            super(context, R.layout.device_list_item, messages);
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            // Get the data item for this position
+            MyThing msg = getItem(position);
+            // Check if an existing view is being reused, otherwise inflate the view
+            if (convertView == null) {
+                convertView = LayoutInflater.from(getContext()).inflate(R.layout.broadcast_list_item, parent, false);
             }
+            // Lookup view for data population
+            TextView mac = (TextView) convertView.findViewById(R.id.broadcast_mac);
+            TextView act = (TextView) convertView.findViewById(R.id.broadcast_action);
+            TextView txt = (TextView) convertView.findViewById(R.id.broadcast_text);
+            TextView nb = (TextView) convertView.findViewById(R.id.broadcast_nBytes);
+            TextView rx = (TextView) convertView.findViewById(R.id.broadcast_rxSerial);
+            TextView tx = (TextView) convertView.findViewById(R.id.broadcast_txSerial);
+            TextView uuid = (TextView) convertView.findViewById(R.id.broadcast_uuid);
 
-
-            txt.setText(sb);
+            mac.setText(msg.mac);
+            act.setText(msg.act);
+            txt.setText(msg.txt);
+            nb.setText(msg.nb == -1 ? null : Integer.toString(msg.nb));
+            tx.setText(msg.tx == -1 ? null : Integer.toString(msg.tx));
+            rx.setText(msg.rx == -1 ? null : Integer.toString(msg.rx));
+            uuid.setText(msg.uuid);
 
             return convertView;
         }
@@ -128,10 +146,10 @@ public class MainActivity extends AppCompatActivity {
     final BroadcastReceiver broadcastReciever = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            while (broadcastsAdapter.getCount() >= 10) {
+            while (broadcastsAdapter.getCount() >= 20) {
                 broadcastsAdapter.remove(broadcastsAdapter.getItem(0));
             }
-            broadcastsAdapter.add(intent);
+            broadcastsAdapter.add(new MyThing(intent));
         }
     };
 
@@ -139,10 +157,10 @@ public class MainActivity extends AppCompatActivity {
     final BroadcastReceiver btReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
-            while (broadcastsAdapter.getCount() >= 10) {
+            while (broadcastsAdapter.getCount() >= 20) {
                 broadcastsAdapter.remove(broadcastsAdapter.getItem(0));
             }
-            broadcastsAdapter.add(intent);
+            broadcastsAdapter.add(new MyThing(intent));
         }
     };
 
@@ -195,7 +213,7 @@ public class MainActivity extends AppCompatActivity {
 
         });
 
-        broadcastsAdapter = new BroadcastsAdapter(this, new ArrayList<Intent>());
+        broadcastsAdapter = new BroadcastsAdapter(this, new ArrayList<MyThing>());
         ListView broadcastList = (ListView) findViewById(R.id.broadcastList);
         broadcastList.setAdapter(broadcastsAdapter);
     }

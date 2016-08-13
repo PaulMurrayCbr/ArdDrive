@@ -1,9 +1,17 @@
 #include <SoftwareSerial.h>
 
-const byte txPin = 9;
-const byte rxPin = 8;
+class SimpleChecksum {
+  public:
+    uint32_t checksumComputed;
 
-SoftwareSerial bt(rxPin, txPin);
+    void clear() {
+      checksumComputed = 0xDEBB1E;
+    }
+
+    void add(char c) {
+      checksumComputed = ((checksumComputed << 19) ^ (checksumComputed >> 5) ^ c) & 0xFFFFFF;
+    }
+};
 
 class BtReader {
   public:
@@ -37,7 +45,9 @@ class BtReader {
     // the chunk decoder overflows, so we need to make room
     byte buffer[BUFLEN + 4];
     int bufCt;
-    uint32_t checksumComputed;
+
+    SimpleChecksum checksum;
+
     uint32_t checksumRead;
 
     BtReader(Stream &in, Callback &callback) : in(in), callback(callback) {
@@ -52,6 +62,7 @@ class BtReader {
       while (in.available() > 0) {
 
         int ch = in.read();
+
         if (ch == -1) return;
         if (ch <= ' ') return; // ignore white space
 
@@ -76,7 +87,9 @@ class BtReader {
             else if (ch == '#') {
               checksumRead = 0;
               transitionTo(BT_CHECKSUM);
-
+            }
+            else if (ch == '<') {
+              // ignore multiple start-angle.
             }
             else {
               transitionTo(BT_ERROR);
@@ -125,12 +138,13 @@ class BtReader {
             else if (ch == '>') {
               buffer[bufCt] = 0;
 
-              if (checksumComputed != checksumRead) {
-                callback.checksumMismatch(buffer, bufCt, checksumComputed, checksumRead);
+              if (checksum.checksumComputed != checksumRead) {
+                callback.checksumMismatch(buffer, bufCt, checksum.checksumComputed, checksumRead);
               }
               else {
                 callback.gotBytes(buffer, bufCt);
               }
+              transition_to_start();
             }
             else {
               transitionTo(BT_ERROR);
@@ -138,7 +152,7 @@ class BtReader {
             break;
 
           case BT_ERROR:
-            if (ch == '<') transition_to_start();
+            if (ch == '>') transition_to_start();
             // else stay in error
             break;
         }
@@ -148,7 +162,7 @@ class BtReader {
 
     void transition_to_start() {
       bufCt = 0;
-      checksumComputed = 0xDEBB1E;
+      checksum.clear();
       checksumRead = 0;
       transitionTo(BT_START);
     }
@@ -200,8 +214,7 @@ class BtReader {
         return false;
       }
 
-      buffer[bufCt++] = (stage >> 16);
-      checksumComputed = ((checksumComputed << 19) ^ (checksumComputed >> 5) ^ buffer[bufCt - 1]) & 0xFFFFFF;
+      checksum.add(buffer[bufCt++] = (stage >> 16));
 
       if (base64Chunk[2] == '=') return true;
 
@@ -211,8 +224,7 @@ class BtReader {
         return false;
       }
 
-      buffer[bufCt++] = (stage >> 8);
-      checksumComputed = ((checksumComputed << 19) ^ (checksumComputed >> 5) ^ buffer[bufCt - 1]) & 0xFFFFFF;
+      checksum.add(buffer[bufCt++] = (stage >> 8));
 
       if (base64Chunk[3] == '=') return true;
 
@@ -222,8 +234,7 @@ class BtReader {
         return false;
       }
 
-      buffer[bufCt++] = (stage >> 0);
-      checksumComputed = ((checksumComputed << 19) ^ (checksumComputed >> 5) ^ buffer[bufCt - 1]) & 0xFFFFFF;
+      checksum.add(buffer[bufCt++] = (stage >> 0));
 
       return true;
     }
@@ -236,11 +247,10 @@ class BtWriter {
   public:
     SoftwareSerial &out;
     uint32_t mostRecentHeartbeatMs;
+    SimpleChecksum checksum;
 
-    // NOTE!!! Code relies on put/pop wrapping!
-    char buf[256];
-    uint8_t bufPut = 0;
-    uint8_t bufPop = 0;
+    char buf[513]; // half the max bluetoth packet size.
+    int bufCt = 0;
 
     BtWriter(SoftwareSerial &out) : out(out) {}
 
@@ -249,37 +259,127 @@ class BtWriter {
     }
 
     void loop() {
-      if (millis() - mostRecentHeartbeatMs > 5000) {
+      if (millis() - mostRecentHeartbeatMs > 10000) {
         mostRecentHeartbeatMs = millis();
-        bt.write('*');
+        out.write('*');
       }
     }
 
     void write(char *bytes, int offs, int len) {
       flush();
-
+      checksum.clear();
       putCh('<');
+
       bytes += offs;
-      while(len-- > 0) putCh(*bytes++);
-      putCh('#');
-      putCh('>');
+      while (len > 0) {
+        if (len >= 3) {
+          put3(bytes);
+          bytes += 3;
+          len -= 3;
+        }
+        else if (len == 2)  {
+          put2(bytes);
+          bytes += 2;
+          len -= 2;
+        }
+        else if (len == 1)  {
+          put1(bytes);
+          bytes++;
+          len --;
+        }
+      }
       
+      putCh('#');
+
+      for (int i = 21; i >= 0; i -= 3) {
+        putCh('0' + ((checksum.checksumComputed >> i) & 7));
+      }
+
+      putCh('>');
+
+      flush();
+    }
+
+    void put3(char *bytes) {
+      checksum.add(bytes[0]);
+      checksum.add(bytes[1]);
+      checksum.add(bytes[2]);
+
+      uint32_t stage = (((uint32_t)bytes[0]) << 16) | (((uint32_t)bytes[1]) << 8) | (((uint32_t)bytes[2]) << 0);
+
+      putCh(to64((stage >> 18) & 0x3F));
+      putCh(to64((stage >> 12) & 0x3F));
+      putCh(to64((stage >> 6) & 0x3F));
+      putCh(to64((stage >> 0) & 0x3F));
+    }
+
+    void put2(char *bytes) {
+      checksum.add(bytes[0]);
+      checksum.add(bytes[1]);
+
+      uint32_t stage = (((uint32_t)bytes[0]) << 16) | (((uint32_t)bytes[1]) << 8) ;
+
+      putCh(to64((stage >> 18) & 0x3F));
+      putCh(to64((stage >> 12) & 0x3F));
+      putCh(to64((stage >> 6) & 0x3F));
+      putCh('=');
+    }
+
+    void put1(char *bytes) {
+      checksum.add(*bytes);
+
+      uint32_t stage = (((uint32_t)bytes[0]) << 16) ;
+
+      putCh(to64((stage >> 18) & 0x3F));
+      putCh(to64((stage >> 12) & 0x3F));
+      putCh('=');
+      putCh('=');
+    }
+
+    // for completeness
+    void put0(char *bytes) {
+      putCh('=');
+      putCh('=');
+      putCh('=');
+      putCh('=');
+    }
+
+    char to64(char in) {
+      if (in < 26) return 'A' + in;
+      else if (in < 52) return 'a' + in - 26;
+      else if (in < 62) return '0' + in - 52;
+      else if (in == 62) return '+';
+      else if (in == 62) return '/';
+      else return '?';
     }
 
     void putCh(char c) {
-      if(((uint8_t)bufPut + 1) == bufPop) {
-        flushToSerial();
+      if (bufCt >= sizeof(buf)) {
+        flush();
       }
-      buf[bufPut++] = c;
+
+      buf[bufCt++] = c;
     }
 
     void flush() {
-      flushToSerial();
-      out.flush();
-    }
 
-    void flushToSerial() {
-      while(bufPut != bufPop) out.write(buf[bufPop++]);
+      // my bluetooth connectin seems to be extremely screwed up, for some reason.
+      // the only thing that woks is sending the charactrs one at a time 
+      
+      if (bufCt > 0) {
+        buf[bufCt] = '\0';
+        Serial.print("writing to BT: ");
+        Serial.println(buf);
+
+        for(int i = 0; i< bufCt; i++) {
+          Serial.print(buf[i]);
+          out.write(buf[i]);
+          delay(100);
+        }
+
+        bufCt = 0;
+      }
+      out.flush();
     }
 };
 
@@ -327,14 +427,21 @@ class Callback : public BtReader::Callback {
 
 } callback;
 
+// PINOUT
+
+const byte txPin = 9;
+const byte rxPin = 8;
+SoftwareSerial bt(rxPin, txPin);
 BtReader reader(bt, callback);
 BtWriter writer(bt);
+const byte fooPin = 4;
 
 void setup() {
   // put your setup code here, to run once:
 
   pinMode(rxPin, INPUT);
   pinMode(txPin, OUTPUT);
+  pinMode(fooPin, INPUT_PULLUP);
 
   Serial.begin(9600);
 
@@ -344,9 +451,11 @@ void setup() {
   for (int i = 3; i > 0; i--) {
     Serial.print(' ');
     Serial.print(i);
-    delay(1000);
+    delay(500);
   }
   Serial.println(" 0");
+
+  bt.print("This is a test message!");
 
   callback.setup();
   reader.setup();
@@ -354,13 +463,19 @@ void setup() {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  static uint32_t ms;
+  static int state;
 
-  if (Serial.available()) {
-    int ch = Serial.read();
-    bt.write((char)ch);
-    Serial.print("sending ");
-    Serial.println((char)ch);
+  // intrestingly, this is a demo of something you might want to do.
+  // pin 4 is the 'foo' button
+
+  if (millis() - ms > 200) {
+    int stateWas = state;
+    state = digitalRead(fooPin);
+    if (stateWas == HIGH && state == LOW) {
+      writer.write("foo", 0, 3);
+      ms = millis();
+    }
   }
 
   reader.loop();

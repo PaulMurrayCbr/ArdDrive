@@ -1,25 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:orientation="horizontal" android:layout_width="match_parent"
+    android:id="@+id/broadcastListitem"
+    android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:id="@+id/broadcastListitem">
+    android:orientation="horizontal">
+
     <TextView
         android:id="@+id/broadcast_mac"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
+        android:background="@drawable/round_border"
         android:textAppearance="?android:attr/textAppearanceSmall"
+        android:drawablePadding="5dp"
         />
+
     <TextView
         android:id="@+id/broadcast_action"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
+        android:background="@drawable/round_border"
         android:textAppearance="?android:attr/textAppearanceSmall"
+        android:drawablePadding="5dp"
         />
+
+    <TextView
+        android:id="@+id/broadcast_txSerial"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:background="@drawable/round_border"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:drawablePadding="5dp"
+        />
+
+    <TextView
+        android:id="@+id/broadcast_rxSerial"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:background="@drawable/round_border"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:drawablePadding="5dp"
+        />
+
+    <TextView
+        android:id="@+id/broadcast_nBytes"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:background="@drawable/round_border"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:drawablePadding="5dp"
+        />
+
     <TextView
         android:id="@+id/broadcast_text"
         android:layout_width="wrap_content"
         android:layout_height="match_parent"
+        android:background="@drawable/round_border"
         android:textAppearance="?android:attr/textAppearanceSmall"
+        android:drawablePadding="5dp"
+        />
+
+    <TextView
+        android:id="@+id/broadcast_uuid"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
+        android:background="@drawable/round_border"
+        android:textAppearance="?android:attr/textAppearanceSmall"
+        android:drawablePadding="5dp"
         />
 
 </LinearLayout>
