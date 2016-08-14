@@ -107,7 +107,7 @@ public class SelectDevice extends AppCompatActivity {
                         needToCancelDiscovery = false;
                     }
 
-                    BluetoothService.startActionConnect(getApplicationContext(), d);
+                    BluetoothService.startActionConnect(getApplicationContext(), d, BluetoothService.SERIAL_BOARD_UUID);
                     finish();
                 }
             }

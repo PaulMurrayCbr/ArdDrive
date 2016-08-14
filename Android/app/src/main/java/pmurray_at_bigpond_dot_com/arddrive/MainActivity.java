@@ -164,29 +164,6 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-    static byte[] makeMsg(String s) {
-        byte[] bytes = s.getBytes();
-        int hash = 0xDEBB1E;
-        //a very, very simple hash function
-        for (byte b : bytes) {
-            hash = ((hash << 19) ^ (hash >> 5) ^ b) & 0xFFFFFF;
-        }
-
-        ByteArrayOutputStream bs = new ByteArrayOutputStream();
-        try {
-            bs.write('<');
-            bs.write(Base64.encode(bytes, Base64.DEFAULT));
-            bs.write('#');
-            for (int i = 21; i >= 0; i -= 3) {
-                bs.write((char) ('0' + ((hash >> i) & 7)));
-            }
-            bs.write('>');
-        } catch (IOException ex) {
-        } // this never happens
-
-        return bs.toByteArray();
-    }
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -196,13 +173,13 @@ public class MainActivity extends AppCompatActivity {
 
         ((Button) findViewById(R.id.send_foo)).setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                startActionSendBytes(getApplicationContext(), makeMsg("foo"));
+                startActionSendMessage(getApplicationContext(), "foo");
             }
         });
 
         ((SeekBar) findViewById(R.id.seekBar)).setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             public void onProgressChanged(SeekBar var1, int var2, boolean var3) {
-                startActionSendBytes(getApplicationContext(), makeMsg("SLIDER:" + Integer.toString(var2) + " ;"));
+                startActionSendMessage(getApplicationContext(), "SLIDER:" + Integer.toString(var2) + " ;");
             }
 
             public void onStartTrackingTouch(SeekBar var1) {
@@ -221,7 +198,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStart() {
         super.onStart();
-        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(broadcastReciever, getBluetoothServiceFilter());
+        LocalBroadcastManager.getInstance(getApplicationContext()).registerReceiver(broadcastReciever, addAllBroadcasts(new IntentFilter()));
 
         registerReceiver(btReceiver, lowLevelBtFiter());
     }
