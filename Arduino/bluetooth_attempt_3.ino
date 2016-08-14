@@ -1,4 +1,5 @@
 #include <SoftwareSerial.h>
+#include <Adafruit_NeoPixel.h>
 
 class SimpleChecksum {
   public:
@@ -288,7 +289,7 @@ class BtWriter {
           len --;
         }
       }
-      
+
       putCh('#');
 
       for (int i = 21; i >= 0; i -= 3) {
@@ -364,14 +365,14 @@ class BtWriter {
     void flush() {
 
       // my bluetooth connectin seems to be extremely screwed up, for some reason.
-      // the only thing that woks is sending the charactrs one at a time 
-      
+      // the only thing that woks is sending the charactrs one at a time
+
       if (bufCt > 0) {
         buf[bufCt] = '\0';
         Serial.print("writing to BT: ");
         Serial.println(buf);
 
-        for(int i = 0; i< bufCt; i++) {
+        for (int i = 0; i < bufCt; i++) {
           Serial.print(buf[i]);
           out.write(buf[i]);
           delay(100);
@@ -389,16 +390,42 @@ class BtWriter {
 
 class Callback : public BtReader::Callback {
   public:
-    void setup() {}
+    Adafruit_NeoPixel pixels = Adafruit_NeoPixel(24, 6, NEO_GRB + NEO_KHZ800);
+
+    void setup() {
+      pixels.begin();
+      pixels.clear();
+      pixels.show();
+
+    }
     void loop() {}
+
+
 
     void gotBytes(byte *buf, int ct) {
       buf[ct] = 0;
       Serial.println();
       Serial.print("GOT STRING ");
       Serial.print('<');
-      Serial.print((char *) buf);
+      Serial.print(*buf);
       Serial.println('>');
+
+      pixels.clear();
+
+      int pos = *buf / 3;
+      for (int i = 0; i < 4; i++) {
+        float brite = (4-i)/4.0;
+        brite *= brite;        
+        uint32_t color = pixels.Color(0, 128 * brite, 32 * brite);
+        pixels.setPixelColor((pos + i) % 24, color);
+        pixels.setPixelColor((pos + 24 - i) % 24, color);
+      }
+
+
+      pixels.setPixelColor((*buf / 3 + 1) % 24, pixels.Color(0, 150 / 3, 75 / 3));
+      pixels.setPixelColor(*buf / 3 % 24, pixels.Color(0, 150, 75));
+      pixels.setPixelColor((*buf / 3 + 23) % 24,  pixels.Color(0, 150 / 3, 75 / 3));
+      pixels.show();
     }
 
     void checksumMismatch(byte *buf, int ct, uint32_t expected, uint32_t received)  {
@@ -436,6 +463,7 @@ BtReader reader(bt, callback);
 BtWriter writer(bt);
 const byte fooPin = 4;
 
+
 void setup() {
   // put your setup code here, to run once:
 
@@ -455,11 +483,10 @@ void setup() {
   }
   Serial.println(" 0");
 
-  bt.print("This is a test message!");
-
   callback.setup();
   reader.setup();
   writer.setup();
+
 }
 
 void loop() {

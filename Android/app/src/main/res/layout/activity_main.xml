@@ -37,7 +37,7 @@
 
         <fragment xmlns:android="http://schemas.android.com/apk/res/android"
             android:id="@+id/fragment"
-            android:name="pmurray_at_bigpond_dot_com.arddrive.MainActivityFragment"
+            android:name="pmurray_at_bigpond_dot_com.arddrive.DriveNeopixelsFragment"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="@drawable/round_border"
