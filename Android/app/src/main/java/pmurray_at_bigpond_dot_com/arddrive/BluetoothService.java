@@ -211,7 +211,7 @@ public class BluetoothService extends Service {
                         state = MessageParserState.ERROR;
                     }
                     break;
-                
+
                 case ERROR:
                     if (b == '>') {
                         state = MessageParserState.IDLE;

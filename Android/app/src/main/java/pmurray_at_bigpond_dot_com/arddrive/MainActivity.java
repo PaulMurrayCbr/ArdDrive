@@ -171,24 +171,8 @@ public class MainActivity extends AppCompatActivity {
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
 
-        ((Button) findViewById(R.id.send_foo)).setOnClickListener(new View.OnClickListener() {
-            public void onClick(View view) {
-                startActionSendMessage(getApplicationContext(), "foo");
-            }
-        });
 
-        ((SeekBar) findViewById(R.id.seekBar)).setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            public void onProgressChanged(SeekBar var1, int var2, boolean var3) {
-                startActionSendMessage(getApplicationContext(), "SLIDER:" + Integer.toString(var2) + " ;");
-            }
-
-            public void onStartTrackingTouch(SeekBar var1) {
-            }
-
-            public void onStopTrackingTouch(SeekBar var1) {
-            }
-
-        });
+        // fragment goes here?
 
         broadcastsAdapter = new BroadcastsAdapter(this, new ArrayList<MyThing>());
         ListView broadcastList = (ListView) findViewById(R.id.broadcastList);
