@@ -24,4 +24,7 @@ dependencies {
     testCompile 'junit:junit:4.12'
     compile 'com.android.support:appcompat-v7:24.0.0'
     compile 'com.android.support:design:24.0.0'
+
+    // https://android-arsenal.com/details/1/1693
+    compile 'com.github.QuadFlask:colorpicker:0.0.10'
 }

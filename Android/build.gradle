@@ -15,6 +15,9 @@ buildscript {
 allprojects {
     repositories {
         jcenter()
+
+        // https://android-arsenal.com/details/1/1693
+        maven { url 'https://jitpack.io' }
     }
 }
 

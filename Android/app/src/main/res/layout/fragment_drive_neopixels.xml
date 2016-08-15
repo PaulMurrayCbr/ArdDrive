@@ -13,5 +13,19 @@
         android:layout_below="@+id/send_foo"
         android:layout_alignParentStart="true" />
 
+    <!-- https://android-arsenal.com/details/1/1693 -->
+
+    <com.flask.colorpicker.ColorPickerView
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        android:id="@+id/color_picker_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        app:alphaSlider="false"
+        app:density="12"
+        app:lightnessSlider="true"
+        app:wheelType="FLOWER"
+        app:lightnessSliderView="@+id/v_lightness_slider"
+        alphaSliderView="@+id/v_alpha_slider"
+        />
 
 </LinearLayout>

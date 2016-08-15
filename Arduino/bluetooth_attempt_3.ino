@@ -61,7 +61,7 @@ class BtReader {
 
     void loop() {
       while (in.available() > 0) {
-          int ch = in.read();
+        int ch = in.read();
 
         if (ch == -1) return;
         if (ch <= ' ') return; // ignore white space
@@ -76,7 +76,7 @@ class BtReader {
           transition_to_start();
           // fall though to the switch
         }
-        
+
         switch (state) {
           case BT_START:
             if (ch == '<') {
@@ -396,15 +396,19 @@ class Callback : public BtReader::Callback {
   public:
     Adafruit_NeoPixel pixels = Adafruit_NeoPixel(24, 6, NEO_GRB + NEO_KHZ800);
 
+    int pos = 0;
+    byte color[3];
+
     void setup() {
       pixels.begin();
       pixels.clear();
       pixels.show();
-
+      color[0] = 0;
+      color[1] = 64;
+      color[2] = 32;
     }
+
     void loop() {}
-
-
 
     void gotBytes(byte *buf, int ct) {
       buf[ct] = 0;
@@ -414,21 +418,42 @@ class Callback : public BtReader::Callback {
       Serial.print(*buf);
       Serial.println('>');
 
+      if (buf[0] == 'P') {
+        setPos(buf + 1);
+        draw();
+      }
+      else if (buf[0] == 'C') {
+        setColor(buf + 1);
+        draw();
+      }
+
+    }
+
+    void setColor(byte *buf) {
+      color[0] = buf[0];
+      color[1] = buf[1];
+      color[2] = buf[2];
+    }
+
+    void setPos(byte *buf) {
+      pos = *buf / 3;
+    }
+
+    void draw() {
       pixels.clear();
 
-      int pos = *buf / 3;
       for (int i = 0; i < 4; i++) {
-        float brite = (4-i)/4.0;
-        brite *= brite;        
-        uint32_t color = pixels.Color(0, 128 * brite, 32 * brite);
+        float brite = (4 - i) / 4.0;
+        brite *= brite;
+
+        float r = color[0] * brite;
+        float g = color[1] * brite;
+        float b = color[2] * brite;
+
+        uint32_t color = pixels.Color(r, g, b);
         pixels.setPixelColor((pos + i) % 24, color);
         pixels.setPixelColor((pos + 24 - i) % 24, color);
       }
-
-
-      pixels.setPixelColor((*buf / 3 + 1) % 24, pixels.Color(0, 150 / 3, 75 / 3));
-      pixels.setPixelColor(*buf / 3 % 24, pixels.Color(0, 150, 75));
-      pixels.setPixelColor((*buf / 3 + 23) % 24,  pixels.Color(0, 150 / 3, 75 / 3));
       pixels.show();
     }
 

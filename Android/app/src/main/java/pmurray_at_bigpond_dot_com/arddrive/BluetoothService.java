@@ -45,6 +45,7 @@ public class BluetoothService extends Service {
 
     public static final String BROADCAST_MESSAGE_RECEIVED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BTS_MESSAGE_RECEIVED";
     public static final String BROADCAST_BAD_MESSAGE = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BTS_BAD_MESSAGE";
+    public static final String BROADCAST_HEARTBEAT_ACQUIRED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BTS_HEARTBEAT_ACQUIRED";
     public static final String BROADCAST_HEARTBEAT_RECEIVED = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BTS_HEARTBEAT_RECEIVED";
     public static final String BROADCAST_HEARTBEAT_LOST = "pmurray_at_bigpond_dot_com.arddrive.broadcast.BTS_HEARTBEAT_LOST";
 
@@ -114,6 +115,7 @@ public class BluetoothService extends Service {
                     bs.write((char) ('0' + ((checksum.checksum >> i) & 7)));
                 }
                 bs.write('>');
+                bs.write('\n');
             } catch (IOException ex) {
             } // this never happens
 
@@ -124,11 +126,8 @@ public class BluetoothService extends Service {
     MessageBuilder messageBuilder = new MessageBuilder();
 
     enum MessageParserState {
-        IDLE, MESSAGE, CHECKSUM, ERROR
-
+        IDLE, MESSAGE, CHECKSUM
     }
-
-    ;
 
     class MessageParser {
         private final BluetoothDevice d;
@@ -163,6 +162,10 @@ public class BluetoothService extends Service {
 
             // asterisks are a heartbeat signal
             if (b == '*') {
+                if (!heartbeat) {
+                    broadcastHeartbeatAcquired(d);
+                }
+
                 most_recent_heartbeat_ms = System.currentTimeMillis();
                 heartbeat = true;
                 broadcastHeartbeatReceived(d);
@@ -192,7 +195,7 @@ public class BluetoothService extends Service {
                     } else {
                         message64.write(b);
                         broadcastBadMessage(d, message64.toByteArray(), -1, MessageFault.unexpected_character);
-                        state = MessageParserState.ERROR;
+                        state = MessageParserState.IDLE;
                     }
                     break;
 
@@ -214,17 +217,10 @@ public class BluetoothService extends Service {
                         messageChecksum |= b - '0';
                     } else {
                         broadcastBadMessage(d, message64.toByteArray(), messageChecksum, MessageFault.unexpected_character);
-                        state = MessageParserState.ERROR;
-                    }
-                    break;
-
-                case ERROR:
-                    if (b == '>') {
                         state = MessageParserState.IDLE;
                     }
                     break;
             }
-
         }
 
         void checkHeartbeat() {
@@ -366,6 +362,8 @@ public class BluetoothService extends Service {
 
         f.addAction(BROADCAST_MESSAGE_RECEIVED);
         f.addAction(BROADCAST_BAD_MESSAGE);
+
+        f.addAction(BROADCAST_HEARTBEAT_ACQUIRED);
         f.addAction(BROADCAST_HEARTBEAT_RECEIVED);
         f.addAction(BROADCAST_HEARTBEAT_LOST);
 
@@ -375,7 +373,7 @@ public class BluetoothService extends Service {
     public static IntentFilter addMessageBroadcasts(IntentFilter f) {
         f.addAction(BROADCAST_MESSAGE_RECEIVED);
         f.addAction(BROADCAST_BAD_MESSAGE);
-        f.addAction(BROADCAST_HEARTBEAT_RECEIVED);
+        f.addAction(BROADCAST_HEARTBEAT_ACQUIRED);
         f.addAction(BROADCAST_HEARTBEAT_LOST);
 
         return f;
@@ -511,6 +509,12 @@ public class BluetoothService extends Service {
         intent.putExtra(EXTRA_BYTES, message);
         if (checksum != -1) intent.putExtra(EXTRA_CHECKSUM, checksum);
         intent.putExtra(EXTRA_FAULT, fault);
+        LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
+    }
+
+    protected void broadcastHeartbeatAcquired(BluetoothDevice d) {
+        Intent intent = new Intent(BROADCAST_HEARTBEAT_ACQUIRED);
+        intent.putExtra(BluetoothDevice.EXTRA_DEVICE, d);
         LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
     }
 
