@@ -48,8 +48,7 @@ class BtReader {
     int bufCt;
 
     SimpleChecksum checksum;
-
-    uint32_t checksumRead;
+    uint32_t incomingChecksum;
 
     BtReader(Stream &in, Callback &callback) : in(in), callback(callback) {
       transition_to_start();
@@ -90,7 +89,7 @@ class BtReader {
               transitionTo(BT_GOT_1);
             }
             else if (ch == '#') {
-              checksumRead = 0;
+              incomingChecksum = 0;
               transitionTo(BT_CHECKSUM);
             }
             else if (ch == '<') {
@@ -137,14 +136,14 @@ class BtReader {
             break;
 
           case BT_CHECKSUM:
-            if (ch >= '0' && ch <= '7') {
-              checksumRead = checksumRead << 3 | (ch - '0');
+            if (isBase64(ch)) {
+              incomingChecksum = (incomingChecksum<<6) | (((uint32_t)sixBit(ch))&0x3F);
             }
             else if (ch == '>') {
               buffer[bufCt] = 0;
 
-              if (checksum.checksumComputed != checksumRead) {
-                callback.checksumMismatch(buffer, bufCt, checksum.checksumComputed, checksumRead);
+              if (checksum.checksumComputed != incomingChecksum) {
+                callback.checksumMismatch(buffer, bufCt, checksum.checksumComputed, incomingChecksum);
               }
               else {
                 callback.gotBytes(buffer, bufCt);
@@ -168,7 +167,6 @@ class BtReader {
     void transition_to_start() {
       bufCt = 0;
       checksum.clear();
-      checksumRead = 0;
       transitionTo(BT_START);
     }
 
@@ -276,6 +274,7 @@ class BtWriter {
       putCh('<');
 
       bytes += offs;
+
       while (len > 0) {
         if (len >= 3) {
           put3(bytes);
@@ -296,9 +295,10 @@ class BtWriter {
 
       putCh('#');
 
-      for (int i = 21; i >= 0; i -= 3) {
-        putCh('0' + ((checksum.checksumComputed >> i) & 7));
-      }
+      putCh(to64((checksum.checksumComputed >> 18) & 0x3F));
+      putCh(to64((checksum.checksumComputed >> 12) & 0x3F));
+      putCh(to64((checksum.checksumComputed >> 6) & 0x3F));
+      putCh(to64((checksum.checksumComputed >> 0) & 0x3F));
 
       putCh('>');
 
@@ -461,11 +461,15 @@ class Callback : public BtReader::Callback {
       buf[ct] = 0;
       Serial.println();
       Serial.print("CHECKSUM MISMATCH ");
-      for (int i = 21; i >= 0; i -= 3)
-        Serial.print((char)(((expected >> i) & 7) + '0'));
+      for (int i = 32-4; i >= 0; i -= 4) {
+        int nybble = (expected >> i) & 0xF;
+        Serial.print((char)(nybble + (nybble < 10 ? '0' : 'A'-10)));
+      }
       Serial.print(" =/= ");
-      for (int i = 21; i >= 0; i -= 3)
-        Serial.print((char)(((received >> i) & 7) + '0'));
+      for (int i = 32-4; i >= 0; i -= 4) {
+        int nybble = (received >> i) & 0xF;
+        Serial.print((char)(nybble + (nybble < 10 ? '0' : 'A'-10)));
+      }
       Serial.print(" <");
       Serial.print((char *) buf);
       Serial.println('>');
@@ -516,21 +520,26 @@ void setup() {
   reader.setup();
   writer.setup();
 
+  Serial.println("Setup complete");
 }
 
 void loop() {
   static uint32_t ms;
-  static int state;
+  static int foo;
 
   // intrestingly, this is a demo of something you might want to do.
   // pin 4 is the 'foo' button
 
   if (millis() - ms > 200) {
-    int stateWas = state;
-    state = digitalRead(fooPin);
-    if (stateWas == HIGH && state == LOW) {
+
+    
+    int fooWas = foo;
+    foo = digitalRead(fooPin);
+    if (fooWas == HIGH && foo == LOW) {
+Serial.println("FOO BUTTON START");
       writer.write("foo", 0, 3);
       ms = millis();
+Serial.println("FOO BUTTON END");
     }
   }
 

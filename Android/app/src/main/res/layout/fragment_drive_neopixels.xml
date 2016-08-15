@@ -18,8 +18,8 @@
     <com.flask.colorpicker.ColorPickerView
         xmlns:app="http://schemas.android.com/apk/res-auto"
         android:id="@+id/color_picker_view"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_width="512dp"
+        android:layout_height="512dp"
         app:alphaSlider="false"
         app:density="12"
         app:lightnessSlider="true"

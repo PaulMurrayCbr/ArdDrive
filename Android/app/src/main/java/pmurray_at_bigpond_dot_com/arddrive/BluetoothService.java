@@ -1,6 +1,5 @@
 package pmurray_at_bigpond_dot_com.arddrive;
 
-import android.app.IntentService;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -8,10 +7,7 @@ import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.res.Configuration;
 import android.os.IBinder;
-import android.os.Parcel;
-import android.os.ParcelUuid;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Base64;
 import android.util.Log;
@@ -20,9 +16,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.UUID;
 
 /**
@@ -99,8 +93,12 @@ public class BluetoothService extends Service {
         }
     }
 
-    static class MessageBuilder {
-        ChecksumCalculator checksum = new ChecksumCalculator();
+    class MessageBuilder {
+        final ChecksumCalculator checksum = new ChecksumCalculator();
+        final byte[] checkbytes = new byte[3];
+
+        final BluetoothDevice d;
+        MessageBuilder(BluetoothDevice d) { this.d = d;}
 
         byte[] makeMsg(byte[] bytes) {
             checksum.clear();
@@ -111,9 +109,11 @@ public class BluetoothService extends Service {
                 bs.write('<');
                 bs.write(Base64.encode(bytes, Base64.DEFAULT));
                 bs.write('#');
-                for (int i = 21; i >= 0; i -= 3) {
-                    bs.write((char) ('0' + ((checksum.checksum >> i) & 7)));
-                }
+                checkbytes[0] = (byte)(checksum.checksum >>16);
+                checkbytes[1] = (byte)(checksum.checksum >>8);
+                checkbytes[2] = (byte)(checksum.checksum >>0);
+
+                bs.write(Base64.encode(checkbytes, Base64.DEFAULT));
                 bs.write('>');
                 bs.write('\n');
             } catch (IOException ex) {
@@ -123,7 +123,6 @@ public class BluetoothService extends Service {
         }
     }
 
-    MessageBuilder messageBuilder = new MessageBuilder();
 
     enum MessageParserState {
         IDLE, MESSAGE, CHECKSUM
@@ -139,7 +138,7 @@ public class BluetoothService extends Service {
         ByteArrayOutputStream message64 = new ByteArrayOutputStream();
 
         MessageParserState state;
-        int messageChecksum;
+        ByteArrayOutputStream messageChecksum64 = new ByteArrayOutputStream();
 
 
         public MessageParser(BluetoothDevice d) {
@@ -188,7 +187,7 @@ public class BluetoothService extends Service {
 
                 case MESSAGE:
                     if (b == '#') {
-                        messageChecksum = 0;
+                        messageChecksum64.reset();
                         state = MessageParserState.CHECKSUM;
                     } else if ((b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || (b == '+') || (b == '/') || (b == '=')) {
                         message64.write(b);
@@ -204,19 +203,24 @@ public class BluetoothService extends Service {
                         byte[] message = Base64.decode(message64.toByteArray(), Base64.DEFAULT);
                         checksum.clear();
                         checksum.append(message);
+                        byte[] decodedChecksum = Base64.decode(messageChecksum64.toByteArray(), Base64.DEFAULT);
 
-                        if (checksum.checksum != messageChecksum) {
+                        if (decodedChecksum.length != 3) {
                             broadcastBadMessage(d, message, checksum.checksum, MessageFault.incorrect_checksum);
                         } else {
-                            broadcastMessageReceived(d, message, messageChecksum);
+                            int check = (((int)decodedChecksum[0] << 16)&0xFF0000) | (((int)decodedChecksum[1] << 8)&0xFF00) | (((int)decodedChecksum[2])&0xFF);
+                            if (checksum.checksum != check) {
+                                broadcastBadMessage(d, message, checksum.checksum, MessageFault.incorrect_checksum);
+                            } else {
+                                broadcastMessageReceived(d, message, check);
+                            }
                         }
-                        state = MessageParserState.IDLE;
 
-                    } else if (b >= '0' && b <= '7') {
-                        messageChecksum <<= 3;
-                        messageChecksum |= b - '0';
+                        state = MessageParserState.IDLE;
+                    } else if ((b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || (b == '+') || (b == '/') || (b == '=')) {
+                        messageChecksum64.write(b);
                     } else {
-                        broadcastBadMessage(d, message64.toByteArray(), messageChecksum, MessageFault.unexpected_character);
+                        broadcastBadMessage(d, message64.toByteArray(), -1, MessageFault.unexpected_character);
                         state = MessageParserState.IDLE;
                     }
                     break;
@@ -241,11 +245,17 @@ public class BluetoothService extends Service {
         private byte[] buffer = new byte[1024 + 5]; // max bluetooth message is 1024 bytes. 5 is slop.
 
         private final MessageParser parser;
+        private final MessageBuilder messageBuilder;
 
         Connection(BluetoothDevice d, UUID uuid) {
             this.d = d;
             this.uuid = uuid;
             this.parser = new MessageParser(d);
+            this.messageBuilder = new MessageBuilder(d);
+        }
+
+        void sendMessage(byte[] bytes) {
+            send(messageBuilder.makeMsg(bytes));
         }
 
         void send(byte[] bytes) {
@@ -593,7 +603,7 @@ public class BluetoothService extends Service {
 
     private void handleActionSendMessage(byte[] bytes) {
         if (currentConnection != null) {
-            currentConnection.send(messageBuilder.makeMsg(bytes));
+            currentConnection.sendMessage(bytes);
         }
     }
 

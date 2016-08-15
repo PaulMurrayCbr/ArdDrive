@@ -88,10 +88,12 @@ public class MainActivity extends AppCompatActivity {
                     if (bb >= ' ' && bb < 127)
                         sb.append((char) bb);
                     else {
+                        sb.append('[');
                         byte bbb = (byte) ((bb >> 4) & 0xf);
                         sb.append((char) (bbb + (bbb < 10 ? '0' : 'a' - 10)));
                         bbb = (byte) ((bb) & 0xf);
                         sb.append((char) (bbb + (bbb < 10 ? '0' : 'a' - 10)));
+                        sb.append(']');
                     }
                 }
                 sb.append("]");
