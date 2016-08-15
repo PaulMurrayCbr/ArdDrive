@@ -61,8 +61,7 @@ class BtReader {
 
     void loop() {
       while (in.available() > 0) {
-
-        int ch = in.read();
+          int ch = in.read();
 
         if (ch == -1) return;
         if (ch <= ' ') return; // ignore white space
@@ -73,6 +72,11 @@ class BtReader {
           return;
         }
 
+        if (ch == '<') { // abort current packet on a '<'
+          transition_to_start();
+          // fall though to the switch
+        }
+        
         switch (state) {
           case BT_START:
             if (ch == '<') {

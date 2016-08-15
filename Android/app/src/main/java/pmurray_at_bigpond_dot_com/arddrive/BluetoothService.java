@@ -169,6 +169,12 @@ public class BluetoothService extends Service {
                 return;
             }
 
+            // on any '<', force a restart.
+            if (b == '<' && state != MessageParserState.IDLE) {
+                broadcastBadMessage(d, message64.toByteArray(), -1, MessageFault.unexpected_character);
+                state = MessageParserState.IDLE;
+            }
+
             switch (state) {
                 case IDLE:
                     if (b == '<') {
